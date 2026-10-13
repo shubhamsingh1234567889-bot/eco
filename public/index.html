@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EcoTrack</title>
+  <meta name="description" content="Track your carbon footprint and get personalised tips to reduce it." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="logo">🌱</span> EcoTrack</div>
+    <div class="topbar-right">
+      <span id="userName" class="user-name"></span>
+      <button id="switchUser" class="btn ghost small" hidden>Switch user</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Onboarding -->
+    <section id="welcome" class="card welcome" hidden>
+      <h1>Know your footprint.<br />Shrink it, one day at a time.</h1>
+      <p>Log your travel, food, energy and waste. EcoTrack turns it into a score, a forecast and swaps that save the most CO₂.</p>
+      <form id="welcomeForm" class="inline-form">
+        <input id="nameInput" type="text" placeholder="Your name" minlength="2" maxlength="30" required autocomplete="given-name" />
+        <button class="btn primary" type="submit">Get started</button>
+      </form>
+      <p id="welcomeError" class="error" role="alert"></p>
+    </section>
+
+    <!-- App -->
+    <div id="app" hidden>
+      <section class="stats">
+        <article class="card stat"><span class="stat-label">Today</span><span class="stat-value" id="statToday">–</span><span class="stat-sub">kg CO₂e</span></article>
+        <article class="card stat"><span class="stat-label">7-day average</span><span class="stat-value" id="statAvg">–</span><span class="stat-sub" id="statGoal">kg CO₂e / day</span></article>
+        <article class="card stat"><span class="stat-label">Eco score</span><span class="stat-value" id="statScore">–</span><span class="stat-sub" id="statScoreLabel"></span></article>
+        <article class="card stat"><span class="stat-label">Green streak</span><span class="stat-value" id="statStreak">–</span><span class="stat-sub">days within goal</span></article>
+      </section>
+
+      <div class="grid">
+        <section class="card">
+          <h2>Log an activity</h2>
+          <form id="logForm" class="form">
+            <label>Category
+              <select id="category"></select>
+            </label>
+            <label>Activity
+              <select id="type"></select>
+            </label>
+            <label><span id="qtyLabel">Quantity</span>
+              <input id="quantity" type="number" min="0.1" step="any" value="1" required />
+            </label>
+            <label>Date
+              <input id="date" type="date" required />
+            </label>
+            <p class="hint" id="preview"></p>
+            <button class="btn primary" type="submit">Add activity</button>
+            <p id="logError" class="error" role="alert"></p>
+          </form>
+        </section>
+
+        <section class="card">
+          <h2>Last 14 days</h2>
+          <div class="chart-box"><canvas id="trendChart" aria-label="Daily emissions trend with forecast" role="img"></canvas></div>
+          <p class="hint" id="forecastNote"></p>
+        </section>
+
+        <section class="card">
+          <h2>Where it comes from <small>(last 7 days)</small></h2>
+          <div class="chart-box small"><canvas id="catChart" aria-label="Emissions by category" role="img"></canvas></div>
+          <p class="hint" id="catEmpty" hidden>Nothing logged in the last 7 days.</p>
+        </section>
+
+        <section class="card">
+          <h2>Your best swaps</h2>
+          <ul id="tips" class="tips"></ul>
+        </section>
+
+        <section class="card">
+          <h2>What if…?</h2>
+          <form id="simForm" class="form">
+            <label>Category
+              <select id="simCategory"></select>
+            </label>
+            <div class="row">
+              <label>Replace
+                <select id="simFrom"></select>
+              </label>
+              <label>With
+                <select id="simTo"></select>
+              </label>
+            </div>
+            <label><span id="simQtyLabel">Amount</span>
+              <input id="simQty" type="number" min="1" step="any" value="100" required />
+            </label>
+            <button class="btn" type="submit">Calculate saving</button>
+          </form>
+          <p id="simResult" class="sim-result" aria-live="polite"></p>
+        </section>
+
+        <section class="card">
+          <h2>Leaderboard</h2>
+          <ol id="board" class="board"></ol>
+          <form id="goalForm" class="inline-form goal">
+            <label>Daily goal (kg CO₂e)
+              <input id="goalInput" type="number" min="1" max="100" step="0.5" required />
+            </label>
+            <button class="btn small" type="submit">Save goal</button>
+          </form>
+        </section>
+
+        <section class="card wide">
+          <h2>Recent activity</h2>
+          <ul id="recent" class="recent"></ul>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    Emission factors are rounded public averages for awareness, not official carbon accounting.
+  </footer>
+</body>
+</html>
