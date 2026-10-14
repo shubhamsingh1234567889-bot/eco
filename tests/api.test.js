@@ -80,6 +80,66 @@ test('validation rejects bad input', async () => {
   });
 });
 
+test('business profile, India market info and savings plan', async () => {
+  await withServer(async (call) => {
+    const market = (await call('/api/carbon-market')).body;
+    assert.equal(market.sectors.length, 10);
+    assert.ok(market.market.blocks.length >= 5);
+    assert.ok(market.market.sources.every((s) => s.url.startsWith('https://')));
+
+    // personal accounts get no business section
+    const me = (await call('/api/users', 'POST', { name: 'Personal' })).body;
+    assert.equal(me.accountType, 'personal');
+    const today = '2026-10-13';
+    const dashPersonal = (await call(`/api/dashboard?userId=${me.id}&today=${today}`)).body;
+    assert.equal(dashPersonal.business, null);
+
+    // invalid profile values are rejected
+    assert.equal((await call('/api/users', 'POST', { name: 'Bad Co', accountType: 'company' })).status, 400);
+    assert.equal((await call('/api/users', 'POST', { name: 'Bad Co', accountType: 'business', sector: 'mining' })).status, 400);
+    assert.equal((await call('/api/users', 'POST', { name: 'Bad Co', accountType: 'business', tariff: 0 })).status, 400);
+
+    // business account
+    const biz = (await call('/api/users', 'POST', {
+      name: 'Shree Textiles', accountType: 'business', sector: 'textiles', tariff: 9,
+    })).body;
+    assert.equal(biz.accountType, 'business');
+    assert.equal(biz.sector, 'textiles');
+    assert.equal(biz.tariff, 9);
+
+    const empty = (await call(`/api/dashboard?userId=${biz.id}&today=${today}`)).body;
+    assert.equal(empty.business.hasData, false);
+    assert.equal(empty.business.sector.route, 'obligated');
+
+    await call('/api/activities', 'POST', {
+      userId: biz.id, category: 'energy', type: 'electricity_kwh', quantity: 1000, date: today,
+    });
+    await call('/api/activities', 'POST', {
+      userId: biz.id, category: 'transport', type: 'car_diesel', quantity: 300, date: today,
+    });
+
+    const dash = (await call(`/api/dashboard?userId=${biz.id}&today=${today}`)).body;
+    assert.equal(dash.business.tariff, 9);
+    assert.ok(dash.business.actions.length >= 3);
+    assert.ok(dash.business.totals.costSavingINR > 0);
+    const defaultCredit = dash.business.totals.creditValueINR;
+
+    // a higher credit price raises credit value; junk prices fall back to the default
+    const pricey = (await call(`/api/dashboard?userId=${biz.id}&today=${today}&creditPrice=3900`)).body;
+    assert.ok(pricey.business.totals.creditValueINR > defaultCredit * 3);
+    const junk = (await call(`/api/dashboard?userId=${biz.id}&today=${today}&creditPrice=abc`)).body;
+    assert.equal(junk.business.totals.creditValueINR, defaultCredit);
+
+    // switch a personal account to business, then back
+    const upd = await call(`/api/users/${me.id}/profile`, 'PUT', { accountType: 'business', sector: 'other', tariff: 7.5 });
+    assert.equal(upd.body.accountType, 'business');
+    const back = await call(`/api/users/${me.id}/profile`, 'PUT', { accountType: 'personal' });
+    assert.equal(back.body.accountType, 'personal');
+    assert.equal(back.body.sector, null);
+    assert.equal((await call(`/api/users/${me.id}/profile`, 'PUT', { accountType: 'business', sector: 'nope' })).status, 400);
+  });
+});
+
 test('simulate endpoint', async () => {
   await withServer(async (call) => {
     const ok = await call('/api/simulate', 'POST', {

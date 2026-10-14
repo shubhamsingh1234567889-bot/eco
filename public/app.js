@@ -9,6 +9,20 @@
   let userId = null;
   let trendChart = null;
   let catChart = null;
+  let market = null; // India carbon-market info from the API
+  let creditPrice = null; // INR per tonne chosen by the user (null = server default)
+
+  const inr = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
+  const radioValue = (name) => document.querySelector(`input[name="${name}"]:checked`).value;
+
+  const ROUTE_TEXT = {
+    obligated:
+      'Your industry has binding emission-intensity targets under India\'s Carbon Credit Trading Scheme (CCTS). If your plant beats its target it earns tradable credits; if it misses, it must buy them. The steps below are your levers.',
+    obligated_pending:
+      'Your industry is listed under the CCTS, but I could not confirm final targets. Check the latest notification with the Bureau of Energy Efficiency. Cutting energy use helps either way.',
+    voluntary:
+      'Your industry has no CCTS obligation. The dependable gain is lower energy and fuel bills. Credits are an upside that needs a registered, independently verified project.',
+  };
 
   /* ---------------- helpers ---------------- */
 
@@ -75,7 +89,10 @@
     e.preventDefault();
     $('welcomeError').textContent = '';
     try {
-      const user = await api('/api/users', { method: 'POST', body: { name: $('nameInput').value } });
+      const user = await api('/api/users', {
+        method: 'POST',
+        body: { name: $('nameInput').value, ...profileBody('useType', 'welcomeSector', 'welcomeTariff') },
+      });
       userId = user.id;
       localStorage.setItem(STORAGE_KEY, String(user.id));
       await showApp();
@@ -87,6 +104,7 @@
   $('switchUser').addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEY);
     userId = null;
+    creditPrice = null;
     $('nameInput').value = '';
     showWelcome();
   });
@@ -189,7 +207,135 @@
     }
   });
 
+  /* ---------------- personal / business profile ---------------- */
+
+  function profileBody(typeName, sectorId, tariffId) {
+    const accountType = radioValue(typeName);
+    if (accountType !== 'business') return { accountType };
+    return { accountType, sector: $(sectorId).value, tariff: Number($(tariffId).value) };
+  }
+
+  function setupBusinessControls() {
+    const sectors = market.sectors.map((s) => ({ key: s.key, label: s.label }));
+    for (const id of ['welcomeSector', 'profileSector']) {
+      fillSelect($(id), sectors);
+      $(id).value = 'other';
+    }
+    $('welcomeTariff').value = market.defaultTariff;
+    $('profileTariff').value = market.defaultTariff;
+
+    for (const [name, panel] of [['useType', 'welcomeBiz'], ['profType', 'profileBiz']]) {
+      for (const radio of document.querySelectorAll(`input[name="${name}"]`)) {
+        radio.addEventListener('change', () => {
+          $(panel).hidden = radioValue(name) !== 'business';
+        });
+      }
+    }
+  }
+
+  function fillProfile(user) {
+    const radio = document.querySelector(`input[name="profType"][value="${user.accountType}"]`);
+    if (radio) radio.checked = true;
+    $('profileBiz').hidden = user.accountType !== 'business';
+    if (user.sector) $('profileSector').value = user.sector;
+    $('profileTariff').value = user.tariff;
+  }
+
+  $('profileForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('profileMsg').textContent = '';
+    try {
+      await api(`/api/users/${userId}/profile`, {
+        method: 'PUT',
+        body: profileBody('profType', 'profileSector', 'profileTariff'),
+      });
+      $('profileMsg').textContent = 'Saved.';
+      await refresh();
+    } catch (err) {
+      $('profileMsg').textContent = err.message;
+    }
+  });
+
+  $('creditPrice').addEventListener('change', () => {
+    const v = Number($('creditPrice').value);
+    creditPrice = Number.isFinite(v) && v >= 100 && v <= 20000 ? v : null;
+    refresh();
+  });
+
   /* ---------------- rendering ---------------- */
+
+  function renderMarket() {
+    $('marketTitle').textContent = `How ${market.market.headline} works`;
+    $('marketAsOf').textContent = market.market.asOf;
+    const blocks = $('marketBlocks');
+    blocks.replaceChildren();
+    for (const b of market.market.blocks) {
+      const div = el('div', 'market-block');
+      div.appendChild(el('h3', null, b.title));
+      div.appendChild(el('p', null, b.body));
+      blocks.appendChild(div);
+    }
+    const list = $('marketSources');
+    list.replaceChildren();
+    for (const s of market.market.sources) {
+      const li = el('li');
+      const a = el('a', null, s.title);
+      a.href = s.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      li.appendChild(a);
+      list.appendChild(li);
+    }
+  }
+
+  function renderBusiness(d) {
+    const b = d.business;
+    $('bizSection').hidden = !b;
+    if (!b) return;
+
+    $('bizSector').textContent = b.sector ? `· ${b.sector.label}` : '';
+    $('bizRoute').textContent = ROUTE_TEXT[b.sector.route];
+
+    const has = b.hasData && b.actions.length > 0;
+    $('bizEmissions').textContent = b.hasData ? fmt(b.annualEmissionTonnes, 1) : '–';
+    $('bizCost').textContent = has ? inr(b.totals.costSavingINR) : '–';
+    $('bizCredit').textContent = has ? inr(b.totals.creditValueINR) : '–';
+    $('bizTotal').textContent = has ? inr(b.totals.totalBenefitINR) : '–';
+    $('bizPercent').textContent = has ? `about ${b.percentReducible}% less CO₂e, ${fmt(b.totals.tonnesSaved, 1)} t a year` : '';
+    $('bizEmpty').hidden = has;
+
+    if (document.activeElement !== $('creditPrice')) $('creditPrice').value = b.creditPrice;
+
+    const sc = $('priceScenarios');
+    sc.replaceChildren();
+    for (const s of market.priceScenarios) {
+      const btn = el('button', 'btn small' + (s.inrPerTonne === b.creditPrice ? ' on' : ''), `${s.label}: ${inr(s.inrPerTonne)}`);
+      btn.type = 'button';
+      btn.addEventListener('click', () => {
+        creditPrice = s.inrPerTonne;
+        refresh();
+      });
+      sc.appendChild(btn);
+    }
+
+    const tbody = $('bizTable').querySelector('tbody');
+    tbody.replaceChildren();
+    for (const a of b.actions) {
+      const tr = el('tr');
+      const first = el('td');
+      first.appendChild(el('strong', null, a.title));
+      first.appendChild(el('small', null, a.detail));
+      tr.appendChild(first);
+      tr.appendChild(el('td', 'num', fmt(a.annualTonnesSaved, 2)));
+      tr.appendChild(el('td', 'num', a.annualCostSavingINR ? inr(a.annualCostSavingINR) : '–'));
+      tr.appendChild(el('td', 'num', inr(a.creditValueINR)));
+      tbody.appendChild(tr);
+    }
+
+    $('bizAssume').textContent =
+      `Planning estimates, not guarantees. They assume ₹${b.tariff} per kWh of electricity, ${inr(b.creditPrice)} per tonne of credits, and illustrative fuel, solar and LPG prices. ` +
+      'Solar is calculated after the efficiency savings. Credit value is only real once reductions are registered and verified, and generating credits has its own costs.';
+  }
 
   function renderStats(d) {
     $('userName').textContent = d.user.name;
@@ -327,11 +473,13 @@
   async function refresh() {
     const today = localToday();
     const [dash, board, recent] = await Promise.all([
-      api(`/api/dashboard?userId=${userId}&today=${today}`),
+      api(`/api/dashboard?userId=${userId}&today=${today}${creditPrice ? `&creditPrice=${creditPrice}` : ''}`),
       api(`/api/leaderboard?today=${today}`),
       api(`/api/activities?userId=${userId}&limit=15`),
     ]);
     renderStats(dash);
+    renderBusiness(dash);
+    fillProfile(dash.user);
     renderTrend(dash);
     renderCategories(dash);
     renderTips(dash);
@@ -345,7 +493,10 @@
     $('date').value = localToday();
     $('date').max = localToday();
     factors = await api('/api/factors');
+    market = await api('/api/carbon-market');
     setupCategoryControls();
+    setupBusinessControls();
+    renderMarket();
 
     const saved = Number(localStorage.getItem(STORAGE_KEY));
     if (saved) {

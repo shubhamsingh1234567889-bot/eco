@@ -11,6 +11,21 @@ A personal **carbon footprint tracker** for the sustainability track of a hackat
 - **What-if simulator**: "what if I replaced 100 km of car with bus?"
 - **Leaderboard** and an adjustable daily goal
 - Light and dark mode, keyboard accessible, mobile friendly
+- **Business mode**: choose "Commercial / business" and pick your industry to get a plan that shows how much you could save a year, how India's Carbon Credit Trading Scheme (CCTS) applies to you, and what carbon credits might be worth (see below)
+
+## Business mode and India's carbon market
+
+When a user says they are using EcoTrack commercially, the dashboard adds a **Business and carbon credits** section:
+
+- Your **yearly emissions** (projected from the last 30 days of logs)
+- A **savings plan**: energy audit, rooftop solar, EV fleet shift, fewer flights, LPG and waste actions, each with tonnes CO₂e saved, rupees saved per year and potential credit value
+- An editable **credit price** with two scenarios (early market about ₹900/t, and a 2030 consultancy projection of about ₹3,900/t)
+- A plain-language **explainer of the CCTS**: who must take part, how credits are earned, the voluntary route for everyone else, and why cutting emissions can raise income
+- Your industry decides the message: obligated (binding targets), pending, or voluntary
+
+Where the money really comes from: lower energy and fuel bills (immediate and dependable). Credits are an upside that exist only for verified, registered reductions, so they are shown separately. All rupee figures are illustrative planning assumptions, defined at the top of `src/business.js`, and should be replaced with your own bills and quotes. India's carbon market rules are still evolving; confirm current details with the [Bureau of Energy Efficiency](https://beeindia.gov.in).
+
+Sources used for the market information: [ICAP on the CCTS](https://icapcarbonaction.com/en/ets/indian-carbon-credit-trading-scheme), [ICAP on the notified sector targets](https://icapcarbonaction.com/en/news/india-notifies-emission-intensity-targets-nine-sectors-under-carbon-credit-trading-scheme) and [Quantum Commodity Intelligence on price projections](https://www.qcintel.com/carbon/article/india-s-ccts-prices-could-rise-to-44-t-by-2030-consultancy-57346.html).
 
 ## Tech stack
 
@@ -43,6 +58,7 @@ src/
   db.js                SQLite schema
   emissions.js         emission factors + CO2e calculation
   algorithms.js        scoring, streak, forecast, tips, simulator
+  business.js          India carbon-market info, sectors, business savings plan
 public/                frontend (index.html, styles.css, app.js)
 scripts/seed.js        demo data
 tests/                 algorithm and API tests
@@ -64,13 +80,15 @@ All live in `src/algorithms.js` and are unit-tested.
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/factors` | Categories, activity types, factors |
+| GET | `/api/carbon-market` | India CCTS explainer, sectors, price scenarios |
 | POST | `/api/users` | Create user `{ name }` |
 | GET | `/api/users/:id` | Get user |
 | PUT | `/api/users/:id/goal` | Set daily goal `{ dailyGoal }` |
+| PUT | `/api/users/:id/profile` | Personal or business `{ accountType, sector, tariff }` |
 | POST | `/api/activities` | Log `{ userId, category, type, quantity, date }` |
 | GET | `/api/activities?userId=&limit=` | Recent activities |
 | DELETE | `/api/activities/:id?userId=` | Delete an activity |
-| GET | `/api/dashboard?userId=&today=` | Stats, charts data, forecast, tips |
+| GET | `/api/dashboard?userId=&today=&creditPrice=` | Stats, charts data, forecast, tips, and `business` plan for business accounts |
 | POST | `/api/simulate` | `{ category, fromType, toType, quantity }` |
 | GET | `/api/leaderboard` | Top 10 by eco score |
 

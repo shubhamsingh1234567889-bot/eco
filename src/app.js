@@ -5,6 +5,7 @@ const express = require('express');
 const { openDb } = require('./db');
 const { CATEGORIES, calcEmission, publicFactors, round } = require('./emissions');
 const alg = require('./algorithms');
+const biz = require('./business');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -14,9 +15,13 @@ function createApp(db = openDb()) {
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
   const q = {
-    createUser: db.prepare('INSERT INTO users (name) VALUES (?)'),
-    getUser: db.prepare('SELECT id, name, daily_goal AS dailyGoal FROM users WHERE id = ?'),
+    createUser: db.prepare('INSERT INTO users (name, account_type, sector, tariff) VALUES (?, ?, ?, ?)'),
+    getUser: db.prepare(
+      `SELECT id, name, daily_goal AS dailyGoal, account_type AS accountType, sector, tariff
+         FROM users WHERE id = ?`
+    ),
     setGoal: db.prepare('UPDATE users SET daily_goal = ? WHERE id = ?'),
+    setProfile: db.prepare('UPDATE users SET account_type = ?, sector = ?, tariff = ? WHERE id = ?'),
     allUsers: db.prepare('SELECT id, name, daily_goal AS dailyGoal FROM users'),
     insertActivity: db.prepare(
       'INSERT INTO activities (user_id, category, type, quantity, emission, date) VALUES (?, ?, ?, ?, ?, ?)'
@@ -48,9 +53,40 @@ function createApp(db = openDb()) {
     return user;
   }
 
+  /** Validates the personal/business profile fields. Returns { error } or the clean values. */
+  function parseProfile(body = {}) {
+    const accountType = body.accountType ?? 'personal';
+    if (!['personal', 'business'].includes(accountType)) {
+      return { error: 'Account type must be personal or business' };
+    }
+    let sector = null;
+    let tariff = biz.DEFAULT_TARIFF;
+    if (accountType === 'business') {
+      sector = body.sector ?? 'other';
+      if (!biz.sectorByKey(sector)) return { error: 'Unknown sector' };
+      if (body.tariff !== undefined && body.tariff !== null && body.tariff !== '') {
+        tariff = Number(body.tariff);
+        if (!Number.isFinite(tariff) || tariff < 1 || tariff > 50) {
+          return { error: 'Electricity tariff must be between Rs 1 and Rs 50 per kWh' };
+        }
+      }
+    }
+    return { accountType, sector, tariff };
+  }
+
   /* ---------- reference data ---------- */
 
   app.get('/api/factors', (_req, res) => res.json(publicFactors()));
+
+  app.get('/api/carbon-market', (_req, res) =>
+    res.json({
+      market: biz.INDIA_MARKET,
+      sectors: biz.SECTORS,
+      priceScenarios: biz.PRICE_SCENARIOS,
+      defaultCreditPrice: biz.DEFAULT_CREDIT_PRICE,
+      defaultTariff: biz.DEFAULT_TARIFF,
+    })
+  );
 
   /* ---------- users ---------- */
 
@@ -59,8 +95,19 @@ function createApp(db = openDb()) {
     if (name.length < 2 || name.length > 30) {
       return res.status(400).json({ error: 'Name must be 2-30 characters' });
     }
-    const info = q.createUser.run(name);
+    const profile = parseProfile(req.body);
+    if (profile.error) return res.status(400).json({ error: profile.error });
+    const info = q.createUser.run(name, profile.accountType, profile.sector, profile.tariff);
     res.status(201).json(q.getUser.get(info.lastInsertRowid));
+  });
+
+  app.put('/api/users/:id/profile', (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const profile = parseProfile(req.body);
+    if (profile.error) return res.status(400).json({ error: profile.error });
+    q.setProfile.run(profile.accountType, profile.sector, profile.tariff, user.id);
+    res.json(q.getUser.get(user.id));
   });
 
   app.get('/api/users/:id', (req, res) => {
@@ -143,8 +190,22 @@ function createApp(db = openDb()) {
     const allActs = q.activitiesSince.all(user.id, '0000-01-01', today);
     const todayTotal = s.daily14[s.daily14.length - 1].total;
 
+    let business = null;
+    if (user.accountType === 'business') {
+      const requested = Number(req.query.creditPrice);
+      const creditPrice =
+        Number.isFinite(requested) && requested >= 100 && requested <= 20000 ? requested : biz.DEFAULT_CREDIT_PRICE;
+      const acts30 = q.activitiesSince.all(user.id, alg.addDays(today, -29), today);
+      const sector = biz.sectorByKey(user.sector) || biz.sectorByKey('other');
+      business = {
+        sector,
+        ...biz.businessPlan(acts30, { windowDays: 30, tariff: user.tariff, creditPrice }),
+      };
+    }
+
     res.json({
       user,
+      business,
       today,
       todayTotal,
       avgDaily7: s.avg7,
