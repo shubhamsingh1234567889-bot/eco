@@ -47,7 +47,9 @@ npm start        # http://localhost:3000
 npm test
 ```
 
-Environment variables: `PORT` (default `3000`), `DB_FILE` (default `data/ecotrack.db`).
+Environment variables: `PORT` (default `3000`), `DB_FILE` (default `data/ecotrack.db`), `AUTO_SEED` (default on; set to `false` to stop demo users being created when the database is empty).
+
+**Free hosting note:** hosts like Render's free tier can wipe the SQLite file on every restart or redeploy. EcoTrack therefore re-creates 8 demo users (5 personal, 3 business) whenever it starts with an empty database. For data that truly persists, attach a persistent disk or move to a hosted database.
 
 ## Project structure
 
