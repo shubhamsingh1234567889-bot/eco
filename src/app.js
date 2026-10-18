@@ -98,6 +98,55 @@ function createApp(db = openDb()) {
     }
   });
 
+  app.get('/api/pollution/forecast', async (req, res) => {
+    const city = String(req.query.city || '').trim();
+    if (city.length < 2 || city.length > 100) {
+      return res.status(400).json({ error: 'Enter a city or area name (2-100 characters).' });
+    }
+    const key = process.env.OPENWEATHER_API_KEY;
+    if (!key) {
+      return res.status(503).json({ error: 'Air-pollution forecast is not configured. Add OPENWEATHER_API_KEY to your .env file and restart EcoTrack.' });
+    }
+    try {
+      const geoUrl = new URL('https://api.openweathermap.org/geo/1.0/direct');
+      geoUrl.search = new URLSearchParams({ q: city, limit: '1', appid: key });
+      const geoRes = await fetch(geoUrl, { signal: AbortSignal.timeout(8000) });
+      if (!geoRes.ok) return res.status(502).json({ error: 'Location lookup failed. Check the API key and try another place.' });
+      const locations = await geoRes.json();
+      if (!locations.length) return res.status(404).json({ error: 'Location not found. Try a city name such as Ghaziabad, IN.' });
+      const place = locations[0];
+      const forecastUrl = new URL('https://api.openweathermap.org/data/2.5/air_pollution/forecast');
+      forecastUrl.search = new URLSearchParams({ lat: String(place.lat), lon: String(place.lon), appid: key });
+      const forecastRes = await fetch(forecastUrl, { signal: AbortSignal.timeout(10000) });
+      if (!forecastRes.ok) return res.status(502).json({ error: 'OpenWeather could not return an air-pollution forecast for this location.' });
+      const payload = await forecastRes.json();
+      const points = (payload.list || []).map((item) => ({
+        timestamp: item.dt ? new Date(item.dt * 1000).toISOString() : null,
+        aqi: Number.isFinite(Number(item.main?.aqi)) ? Number(item.main.aqi) : null,
+        components: {
+          pm2_5: item.components?.pm2_5 ?? null,
+          pm10: item.components?.pm10 ?? null,
+          no2: item.components?.no2 ?? null,
+          o3: item.components?.o3 ?? null,
+          co: item.components?.co ?? null,
+          so2: item.components?.so2 ?? null,
+          nh3: item.components?.nh3 ?? null,
+        },
+      }));
+      if (!points.length) return res.status(502).json({ error: 'No forecast points are currently available for this location.' });
+      res.set('Cache-Control', 'public, max-age=1800');
+      res.json({
+        location: { name: place.name, state: place.state || null, country: place.country, lat: place.lat, lon: place.lon },
+        source: 'OpenWeather Air Pollution Forecast API',
+        points,
+        note: 'This is a model forecast, not a guarantee of future local air quality. OpenWeather AQI uses a 1–5 scale; pollutant values are reported by the provider in µg/m³. Air pollution is different from personal CO₂e emissions.',
+      });
+    } catch (err) {
+      console.error('Pollution forecast failed:', err.message);
+      res.status(502).json({ error: 'Could not reach the air-pollution forecast service. Please try again shortly.' });
+    }
+  });
+
   app.get('/api/eco-coach', (req, res) => {
     const user = requireUser(req, res);
     if (!user) return;

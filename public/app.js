@@ -10,6 +10,8 @@
   let trendChart = null;
   let catChart = null;
   let solarChart = null;
+  let pollutionForecastChart = null;
+  let incomeChart = null;
   let profileMode = localStorage.getItem('ecotrack.profileType') || 'individual';
   let businessName = localStorage.getItem('ecotrack.businessName') || '';
   let latestDashboard = null;
@@ -299,6 +301,94 @@
     });
   }
 
+  /* ---------------- impact dashboard widgets ---------------- */
+
+  const moneyFmt = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+
+  function renderIncomeComparison() {
+    const before = Math.max(0, Number($('incomeBefore').value) || 0);
+    const after = Math.max(0, Number($('incomeAfter').value) || 0);
+    localStorage.setItem('ecotrack.incomeBefore', String(before));
+    localStorage.setItem('ecotrack.incomeAfter', String(after));
+    if (incomeChart) incomeChart.destroy();
+    incomeChart = new Chart($('incomeChart'), {
+      type: 'bar',
+      data: {
+        labels: ['Before EcoTrack', 'After EcoTrack'],
+        datasets: [{ label: 'Monthly income (₹)', data: [before, after], backgroundColor: ['#94a3b8', '#22a06b'], borderRadius: 9, maxBarThickness: 64 }],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => moneyFmt(ctx.parsed.y) } } },
+        scales: {
+          x: { ticks: { color: cssVar('--muted') }, grid: { display: false } },
+          y: { beginAtZero: true, ticks: { color: cssVar('--muted'), callback: (v) => `₹${Number(v).toLocaleString('en-IN')}` }, grid: { color: cssVar('--line') } },
+        },
+      },
+    });
+    const difference = after - before;
+    const pct = before > 0 ? (difference / before) * 100 : null;
+    $('incomeDelta').textContent = difference > 0
+      ? `Entered figures show ${moneyFmt(difference)} more per month${pct == null ? '' : ` (+${pct.toFixed(1)}%)`}.`
+      : difference < 0 ? `Entered figures show ${moneyFmt(Math.abs(difference))} less per month${pct == null ? '' : ` (${pct.toFixed(1)}%)`}.`
+      : 'Entered monthly income is unchanged.';
+  }
+
+  function renderSectorCircles(d) {
+    const container = $('sectorCircles');
+    container.replaceChildren();
+    const categories = d?.categories || {};
+    const entries = Object.entries(categories).filter(([, value]) => Number(value) > 0);
+    const total = entries.reduce((sum, [, value]) => sum + Number(value), 0);
+    if (!total) {
+      container.appendChild(el('p', 'empty', 'Log a few activities to see your sector breakdown.'));
+      $('sectorSummary').textContent = 'No emissions logged in the last 7 days yet.';
+      return;
+    }
+    const labels = { transport: 'Transport', food: 'Food', energy: 'Electricity', waste: 'Waste' };
+    entries.sort((a, b) => Number(b[1]) - Number(a[1]));
+    for (const [key, value] of entries) {
+      const share = Math.round((Number(value) / total) * 100);
+      const color = CAT_COLORS[key] || '#64748b';
+      const item = el('div', 'sector-item');
+      const ring = el('div', 'sector-ring');
+      ring.style.setProperty('--ring-color', color);
+      ring.style.setProperty('--ring-value', `${share}%`);
+      ring.setAttribute('role', 'img');
+      ring.setAttribute('aria-label', `${labels[key] || key}: ${share}% of logged emissions`);
+      const center = el('span', 'sector-ring-value', `${share}%`);
+      ring.appendChild(center);
+      item.append(ring, el('strong', 'sector-label', labels[key] || key), el('span', 'sector-amount', `${Number(value).toFixed(1)} kg CO₂e`));
+      container.appendChild(item);
+    }
+    const largest = entries[0];
+    $('sectorSummary').textContent = `${labels[largest[0]] || largest[0]} is your largest logged source at ${Math.round((Number(largest[1]) / total) * 100)}% of recent emissions.`;
+  }
+
+  function renderEnergyMix() {
+    const clean = Math.min(100, Math.max(0, Number($('cleanEnergyShare').value) || 0));
+    const dirty = 100 - clean;
+    $('energyMixRing').style.setProperty('--clean-share', `${clean}%`);
+    $('cleanPercentLabel').textContent = `${clean}%`;
+    $('cleanLegendLabel').textContent = `${clean}%`;
+    $('dirtyPercentLabel').textContent = `${dirty}%`;
+    $('cleanSliderLabel').textContent = `${clean}%`;
+    localStorage.setItem('ecotrack.cleanEnergyShare', String(clean));
+  }
+
+  function renderImpactDashboard(d) {
+    renderSectorCircles(d);
+    renderIncomeComparison();
+    renderEnergyMix();
+  }
+
+  $('incomeBefore').value = localStorage.getItem('ecotrack.incomeBefore') ?? '30000';
+  $('incomeAfter').value = localStorage.getItem('ecotrack.incomeAfter') ?? '33000';
+  $('cleanEnergyShare').value = localStorage.getItem('ecotrack.cleanEnergyShare') ?? '30';
+  $('incomeBefore').addEventListener('input', renderIncomeComparison);
+  $('incomeAfter').addEventListener('input', renderIncomeComparison);
+  $('cleanEnergyShare').addEventListener('input', renderEnergyMix);
+
   function renderTips(d) {
     const ul = $('tips');
     ul.replaceChildren();
@@ -397,6 +487,7 @@
     renderStats(dash);
     renderTrend(dash);
     renderCategories(dash);
+    renderImpactDashboard(dash);
     renderTips(dash);
     renderBoard(board);
     renderRecent(recent);
@@ -453,6 +544,50 @@
       result.hidden = false;
     } catch (err) {
       $('pollutionError').textContent = err.message;
+    }
+  });
+
+  $('pollutionForecastBtn').addEventListener('click', async () => {
+    $('pollutionError').textContent = '';
+    const city = $('cityInput').value.trim();
+    if (city.length < 2) {
+      $('pollutionError').textContent = 'Enter a city or area name first.';
+      $('cityInput').focus();
+      return;
+    }
+    const section = $('pollutionForecastResult');
+    const button = $('pollutionForecastBtn');
+    button.disabled = true;
+    button.textContent = 'Loading forecast…';
+    section.hidden = true;
+    try {
+      const data = await api(`/api/pollution/forecast?city=${encodeURIComponent(city)}`);
+      const points = data.points.slice(0, 24);
+      const labels = points.map((point) => point.timestamp
+        ? new Date(point.timestamp).toLocaleString([], { weekday: 'short', hour: 'numeric' })
+        : '—');
+      $('forecastTitle').textContent = `${data.location.name}${data.location.state ? ', ' + data.location.state : ''} · air-pollution forecast`;
+      $('forecastMeta').textContent = `Showing the next ${points.length} forecast intervals from ${data.points.length} available points. AQI uses OpenWeather's 1–5 scale.`;
+      $('forecastNote').textContent = data.note;
+      if (pollutionForecastChart) pollutionForecastChart.destroy();
+      pollutionForecastChart = new Chart($('pollutionForecastChart'), {
+        type: 'line',
+        data: { labels, datasets: [
+          { label: 'OpenWeather AQI (1–5)', data: points.map((point) => point.aqi), yAxisID: 'y', borderColor: '#2f7fd1', backgroundColor: 'rgba(47,127,209,.12)', fill: true, tension: 0.25, spanGaps: true },
+          { label: 'PM2.5 (µg/m³)', data: points.map((point) => point.components.pm2_5), yAxisID: 'y1', borderColor: '#e0892b', backgroundColor: 'rgba(224,137,43,.08)', tension: 0.25, spanGaps: true },
+        ] },
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: {
+          y: { type: 'linear', position: 'left', min: 1, max: 5, ticks: { stepSize: 1 }, title: { display: true, text: 'AQI (1–5)' } },
+          y1: { type: 'linear', position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: 'PM2.5 (µg/m³)' } },
+          x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } },
+        } }
+      });
+      section.hidden = false;
+    } catch (err) {
+      $('pollutionError').textContent = err.message;
+    } finally {
+      button.disabled = false;
+      button.textContent = 'View 5-day forecast';
     }
   });
 

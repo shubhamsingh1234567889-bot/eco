@@ -48,15 +48,60 @@
         <article class="card stat"><span class="stat-label">Green streak</span><span class="stat-value" id="statStreak">–</span><span class="stat-sub">days within goal</span></article>
       </section>
 
+      <section class="impact-dashboard" aria-labelledby="impactTitle">
+        <div class="impact-intro">
+          <div><p class="eyebrow">YOUR IMPACT AT A GLANCE</p><h2 id="impactTitle">EcoTrack impact dashboard</h2></div>
+          <p class="hint">Personalize the estimates below. Sector shares use your logged emissions; income and energy mix are user-entered estimates, not verified financial or utility data.</p>
+        </div>
+        <div class="impact-grid">
+          <article class="card impact-card income-card">
+            <div class="section-heading"><div><p class="eyebrow">FINANCIAL PROGRESS</p><h3>Income before vs after</h3></div><span class="impact-icon">↗</span></div>
+            <p class="hint">Compare monthly income before EcoTrack and your current income after applying changes. Enter your own figures.</p>
+            <div class="income-inputs">
+              <label>Before (₹/month)<input id="incomeBefore" type="number" min="0" max="1000000000" step="any" value="30000" /></label>
+              <label>After (₹/month)<input id="incomeAfter" type="number" min="0" max="1000000000" step="any" value="33000" /></label>
+            </div>
+            <div class="chart-box impact-income-chart"><canvas id="incomeChart" role="img" aria-label="User-entered monthly income before and after using EcoTrack"></canvas></div>
+            <p id="incomeDelta" class="impact-summary" aria-live="polite"></p>
+          </article>
+
+          <article class="card impact-card sector-card">
+            <div class="section-heading"><div><p class="eyebrow">EMISSIONS BREAKDOWN</p><h3>Which sectors use your footprint?</h3></div><span class="impact-icon">◌</span></div>
+            <p class="hint">Each circle shows a sector's share of your logged CO₂e emissions over the last 7 days.</p>
+            <div id="sectorCircles" class="sector-circles" aria-live="polite"></div>
+            <p id="sectorSummary" class="impact-summary"></p>
+          </article>
+
+          <article class="card impact-card energy-mix-card">
+            <div class="section-heading"><div><p class="eyebrow">ENERGY MIX</p><h3>Polluting vs clean energy</h3></div><span class="impact-icon">⚡</span></div>
+            <p class="hint">Set the estimated share of your energy from clean sources. The remaining share is shown as polluting energy.</p>
+            <div class="energy-mix-layout">
+              <div id="energyMixRing" class="energy-mix-ring" role="img" aria-label="Estimated clean and polluting energy share"><div><strong id="cleanPercentLabel">30%</strong><span>clean energy</span></div></div>
+              <div class="energy-legend"><div><span class="legend-dot dirty"></span><span>Polluting energy</span><strong id="dirtyPercentLabel">70%</strong></div><div><span class="legend-dot clean"></span><span>Clean energy</span><strong id="cleanLegendLabel">30%</strong></div></div>
+            </div>
+            <label class="range-label" for="cleanEnergyShare">Clean energy share <strong id="cleanSliderLabel">30%</strong></label>
+            <input id="cleanEnergyShare" class="energy-range" type="range" min="0" max="100" value="30" />
+            <p class="hint">Illustrative estimate. Use your electricity bill, provider mix or renewable-energy records for a more accurate figure.</p>
+          </article>
+        </div>
+      </section>
+
       <section class="card environmental-card">
         <div class="section-heading"><div><p class="eyebrow">LIVE ENVIRONMENT</p><h2>Pollution intelligence</h2></div><span class="pill">OpenWeather</span></div>
         <p class="hint">Search a city or area to view the latest available air-pollution reading. This is separate from your personal carbon footprint.</p>
         <form id="pollutionForm" class="inline-form pollution-form">
           <input id="cityInput" type="text" placeholder="e.g. Ghaziabad, IN" minlength="2" maxlength="100" required aria-label="City or area" />
           <button class="btn primary" type="submit">Check air quality</button>
+          <button id="pollutionForecastBtn" class="btn secondary" type="button">View 5-day forecast</button>
         </form>
         <p id="pollutionError" class="error" role="alert"></p>
         <div id="pollutionResult" class="pollution-result" hidden aria-live="polite"></div>
+        <section id="pollutionForecastResult" class="pollution-result forecast-result" hidden aria-live="polite">
+          <div class="pollution-heading"><h3 id="forecastTitle">Air pollution forecast</h3><span class="pill">Hourly forecast</span></div>
+          <p id="forecastMeta" class="hint"></p>
+          <div class="chart-box"><canvas id="pollutionForecastChart" role="img" aria-label="Forecast air quality index and PM2.5 over time"></canvas></div>
+          <p id="forecastNote" class="hint"></p>
+        </section>
       </section>
 
       <div class="grid">

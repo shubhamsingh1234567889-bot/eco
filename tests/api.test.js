@@ -110,3 +110,10 @@ test('pollution endpoint validates location input', async () => {
     assert.equal(result.status, 400);
   });
 });
+
+test('pollution forecast endpoint validates location input', async () => {
+  await withServer(async (call) => {
+    const result = await call('/api/pollution/forecast?city=x');
+    assert.equal(result.status, 400);
+  });
+});

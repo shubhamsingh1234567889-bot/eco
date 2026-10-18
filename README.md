@@ -20,6 +20,7 @@ Solar planning uses simplified assumptions (including 1,400 kWh per installed kW
 - **Smart tips**: ranked by the kg CO₂e *your own* habits would save per week
 - **What-if simulator**: compare travel/food/waste alternatives and estimated CO₂e savings
 - **Live pollution intelligence**: search a city, view OpenWeather AQI (1–5), supported pollutant readings, timestamp, map and practical suggestions
+- **Air-pollution forecast**: fetch forecast intervals from OpenWeather, graph AQI (1–5) and PM2.5 for the next 24 forecast intervals, and display the provider caveat
 - **Personalized Eco-Coach**: activity-aware, rule-based ideas with transparent estimated weekly savings
 - **Energy & cost simulator**: estimate kWh, rupee and CO₂e savings for a chosen electricity reduction
 - **Weekly challenges**: five practical challenges with browser-saved progress per profile
@@ -80,6 +81,7 @@ All live in `src/algorithms.js` and are unit-tested.
 |--------|------|---------|
 | GET | `/api/factors` | Categories, activity types, factors |
 | GET | `/api/pollution?city=Ghaziabad%2C%20IN` | Geocode a location and return current OpenWeather Air Pollution data (requires `OPENWEATHER_API_KEY`) |
+| GET | `/api/pollution/forecast?city=Ghaziabad%2C%20IN` | Return OpenWeather forecast intervals for a location (requires `OPENWEATHER_API_KEY`) |
 | GET | `/api/eco-coach?userId=` | Activity-aware sustainability ideas and estimated savings |
 | POST | `/api/users` | Create user `{ name }` |
 | GET | `/api/users/:id` | Get user |
@@ -120,6 +122,7 @@ MIT
 3. Set `OPENWEATHER_API_KEY=your_real_key` in `.env` (do not include quotes unless needed).
 4. Run `npm install`, then `npm start`, and search for a city in Pollution intelligence.
 5. For Render, add `OPENWEATHER_API_KEY` under the service's Environment settings; do not upload the `.env` file.
+6. Use **View 5-day forecast** in Pollution intelligence to chart the next 24 forecast intervals (the API may return more).
 
 The app deliberately returns a setup message if the key is absent. Never expose the API key in `public/app.js` or client-side HTML.
 
