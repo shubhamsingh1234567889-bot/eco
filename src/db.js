@@ -34,12 +34,6 @@ function openDb(file) {
     CREATE INDEX IF NOT EXISTS idx_activities_user_date ON activities(user_id, date);
   `);
 
-  // Lightweight migration: older databases lack the business-profile columns.
-  const cols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
-  if (!cols.includes('account_type')) db.exec("ALTER TABLE users ADD COLUMN account_type TEXT NOT NULL DEFAULT 'personal'");
-  if (!cols.includes('sector')) db.exec('ALTER TABLE users ADD COLUMN sector TEXT');
-  if (!cols.includes('tariff')) db.exec('ALTER TABLE users ADD COLUMN tariff REAL NOT NULL DEFAULT 8');
-
   return db;
 }
 

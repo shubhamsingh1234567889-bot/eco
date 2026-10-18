@@ -5,7 +5,6 @@ const express = require('express');
 const { openDb } = require('./db');
 const { CATEGORIES, calcEmission, publicFactors, round } = require('./emissions');
 const alg = require('./algorithms');
-const biz = require('./business');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -15,13 +14,9 @@ function createApp(db = openDb()) {
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
   const q = {
-    createUser: db.prepare('INSERT INTO users (name, account_type, sector, tariff) VALUES (?, ?, ?, ?)'),
-    getUser: db.prepare(
-      `SELECT id, name, daily_goal AS dailyGoal, account_type AS accountType, sector, tariff
-         FROM users WHERE id = ?`
-    ),
+    createUser: db.prepare('INSERT INTO users (name) VALUES (?)'),
+    getUser: db.prepare('SELECT id, name, daily_goal AS dailyGoal FROM users WHERE id = ?'),
     setGoal: db.prepare('UPDATE users SET daily_goal = ? WHERE id = ?'),
-    setProfile: db.prepare('UPDATE users SET account_type = ?, sector = ?, tariff = ? WHERE id = ?'),
     allUsers: db.prepare('SELECT id, name, daily_goal AS dailyGoal FROM users'),
     insertActivity: db.prepare(
       'INSERT INTO activities (user_id, category, type, quantity, emission, date) VALUES (?, ?, ?, ?, ?, ?)'
@@ -53,40 +48,76 @@ function createApp(db = openDb()) {
     return user;
   }
 
-  /** Validates the personal/business profile fields. Returns { error } or the clean values. */
-  function parseProfile(body = {}) {
-    const accountType = body.accountType ?? 'personal';
-    if (!['personal', 'business'].includes(accountType)) {
-      return { error: 'Account type must be personal or business' };
+  /* ---------- live environmental intelligence ---------- */
+
+  app.get('/api/pollution', async (req, res) => {
+    const city = String(req.query.city || '').trim();
+    if (city.length < 2 || city.length > 100) {
+      return res.status(400).json({ error: 'Enter a city or area name (2-100 characters).' });
     }
-    let sector = null;
-    let tariff = biz.DEFAULT_TARIFF;
-    if (accountType === 'business') {
-      sector = body.sector ?? 'other';
-      if (!biz.sectorByKey(sector)) return { error: 'Unknown sector' };
-      if (body.tariff !== undefined && body.tariff !== null && body.tariff !== '') {
-        tariff = Number(body.tariff);
-        if (!Number.isFinite(tariff) || tariff < 1 || tariff > 50) {
-          return { error: 'Electricity tariff must be between Rs 1 and Rs 50 per kWh' };
-        }
-      }
+    const key = process.env.OPENWEATHER_API_KEY;
+    if (!key) {
+      return res.status(503).json({ error: 'Live pollution is not configured yet. Add OPENWEATHER_API_KEY to your .env file and restart EcoTrack.' });
     }
-    return { accountType, sector, tariff };
-  }
+    try {
+      const geoUrl = new URL('https://api.openweathermap.org/geo/1.0/direct');
+      geoUrl.search = new URLSearchParams({ q: city, limit: '1', appid: key });
+      const geoRes = await fetch(geoUrl, { signal: AbortSignal.timeout(8000) });
+      if (!geoRes.ok) return res.status(502).json({ error: 'Location lookup failed. Check the API key and try another place.' });
+      const locations = await geoRes.json();
+      if (!locations.length) return res.status(404).json({ error: 'Location not found. Try a city name such as Ghaziabad, IN.' });
+      const place = locations[0];
+      const pollutionUrl = new URL('https://api.openweathermap.org/data/2.5/air_pollution');
+      pollutionUrl.search = new URLSearchParams({ lat: String(place.lat), lon: String(place.lon), appid: key });
+      const pollutionRes = await fetch(pollutionUrl, { signal: AbortSignal.timeout(8000) });
+      if (!pollutionRes.ok) return res.status(502).json({ error: 'Pollution provider could not return data for this location.' });
+      const payload = await pollutionRes.json();
+      const item = payload.list?.[0];
+      if (!item) return res.status(502).json({ error: 'No pollution reading is currently available for this location.' });
+      const c = item.components || {};
+      const aqi = Number(item.main?.aqi || 0);
+      const aqiLabels = { 1: 'Good', 2: 'Fair', 3: 'Moderate', 4: 'Poor', 5: 'Very poor' };
+      const suggestions = [];
+      if (aqi >= 4) suggestions.push('Consider reducing strenuous outdoor activity and check local health guidance. This reading is not a medical diagnosis.');
+      if (aqi >= 3) suggestions.push('Where practical, choose lower-traffic routes and avoid adding unnecessary vehicle trips.');
+      if (Number(c.pm2_5 || 0) > 25) suggestions.push('Reduce avoidable combustion emissions: combine errands, carpool, or use public transport when feasible.');
+      suggestions.push('For carbon reduction, log your travel and energy use in EcoTrack; air pollution and personal CO₂e are different measures.');
+      res.set('Cache-Control', 'public, max-age=600');
+      res.json({
+        location: { name: place.name, state: place.state || null, country: place.country, lat: place.lat, lon: place.lon },
+        observedAt: item.dt ? new Date(item.dt * 1000).toISOString() : null,
+        aqi, aqiLabel: aqiLabels[aqi] || 'Unavailable',
+        components: { co: c.co ?? null, no: c.no ?? null, no2: c.no2 ?? null, o3: c.o3 ?? null, so2: c.so2 ?? null, pm2_5: c.pm2_5 ?? null, pm10: c.pm10 ?? null, nh3: c.nh3 ?? null },
+        suggestions,
+        source: 'OpenWeather Air Pollution API',
+        note: 'Provider AQI is on a 1–5 scale. Pollutant concentrations are µg/m³ except CO, which is reported in µg/m³ by this API. This is not a street-level guarantee.'
+      });
+    } catch (err) {
+      console.error('Pollution lookup failed:', err.message);
+      res.status(502).json({ error: 'Could not reach the pollution service. Please try again shortly.' });
+    }
+  });
+
+  app.get('/api/eco-coach', (req, res) => {
+    const user = requireUser(req, res);
+    if (!user) return;
+    const today = resolveToday(req);
+    const acts = q.activitiesSince.all(user.id, alg.addDays(today, -6), today);
+    const byType = Object.create(null);
+    for (const a of acts) byType[a.type] = (byType[a.type] || 0) + a.quantity;
+    const ideas = [];
+    const add = (title, detail, savingKg, costNote, difficulty = 'Easy') => ideas.push({ title, detail, estimatedWeeklySavingKg: Math.max(0, Math.round(savingKg * 100) / 100), costNote, difficulty });
+    if (byType.car_petrol || byType.car_diesel) add('Replace one short car trip', 'Try walking, cycling, public transport or sharing a ride for one suitable short journey.', (byType.car_petrol || 0) * 0.192 * 0.15 + (byType.car_diesel || 0) * 0.171 * 0.15, 'May save fuel costs', 'Easy');
+    if (byType.beef_meal) add('Try a lower-impact meal', 'Replace one beef or mutton meal with a meal you enjoy that has a lower estimated footprint.', Math.min(byType.beef_meal, 2) * (6 - 0.9), 'Depends on meal prices', 'Easy');
+    if (byType.electricity_kwh) add('Reduce avoidable electricity use', 'Switch off unused devices and adjust cooling/heating sensibly; check actual meter readings over time.', Math.min(byType.electricity_kwh * 0.1, byType.electricity_kwh) * 0.82, 'Potential electricity-bill saving', 'Easy');
+    if (byType.general_waste_kg) add('Prevent and sort waste', 'Avoid food waste first, then separate recyclable and compostable material where local services accept it.', Math.min(byType.general_waste_kg, 2) * (0.45 - 0.02), 'Can reduce waste costs where applicable', 'Medium');
+    add('Set one measurable weekly goal', 'Choose one change you can realistically repeat, log it, and compare your activity totals next week.', 0, 'Track your progress in EcoTrack', 'Easy');
+    res.json({ user: user.name, periodDays: 7, ideas: ideas.sort((a, b) => b.estimatedWeeklySavingKg - a.estimatedWeeklySavingKg).slice(0, 5), disclaimer: 'Savings are rough estimates based on logged quantities and rounded emission factors; actual results depend on what you replace and local conditions.' });
+  });
 
   /* ---------- reference data ---------- */
 
   app.get('/api/factors', (_req, res) => res.json(publicFactors()));
-
-  app.get('/api/carbon-market', (_req, res) =>
-    res.json({
-      market: biz.INDIA_MARKET,
-      sectors: biz.SECTORS,
-      priceScenarios: biz.PRICE_SCENARIOS,
-      defaultCreditPrice: biz.DEFAULT_CREDIT_PRICE,
-      defaultTariff: biz.DEFAULT_TARIFF,
-    })
-  );
 
   /* ---------- users ---------- */
 
@@ -95,19 +126,8 @@ function createApp(db = openDb()) {
     if (name.length < 2 || name.length > 30) {
       return res.status(400).json({ error: 'Name must be 2-30 characters' });
     }
-    const profile = parseProfile(req.body);
-    if (profile.error) return res.status(400).json({ error: profile.error });
-    const info = q.createUser.run(name, profile.accountType, profile.sector, profile.tariff);
+    const info = q.createUser.run(name);
     res.status(201).json(q.getUser.get(info.lastInsertRowid));
-  });
-
-  app.put('/api/users/:id/profile', (req, res) => {
-    const user = requireUser(req, res);
-    if (!user) return;
-    const profile = parseProfile(req.body);
-    if (profile.error) return res.status(400).json({ error: profile.error });
-    q.setProfile.run(profile.accountType, profile.sector, profile.tariff, user.id);
-    res.json(q.getUser.get(user.id));
   });
 
   app.get('/api/users/:id', (req, res) => {
@@ -190,22 +210,8 @@ function createApp(db = openDb()) {
     const allActs = q.activitiesSince.all(user.id, '0000-01-01', today);
     const todayTotal = s.daily14[s.daily14.length - 1].total;
 
-    let business = null;
-    if (user.accountType === 'business') {
-      const requested = Number(req.query.creditPrice);
-      const creditPrice =
-        Number.isFinite(requested) && requested >= 100 && requested <= 20000 ? requested : biz.DEFAULT_CREDIT_PRICE;
-      const acts30 = q.activitiesSince.all(user.id, alg.addDays(today, -29), today);
-      const sector = biz.sectorByKey(user.sector) || biz.sectorByKey('other');
-      business = {
-        sector,
-        ...biz.businessPlan(acts30, { windowDays: 30, tariff: user.tariff, creditPrice }),
-      };
-    }
-
     res.json({
       user,
-      business,
       today,
       todayTotal,
       avgDaily7: s.avg7,

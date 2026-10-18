@@ -9,20 +9,6 @@
   let userId = null;
   let trendChart = null;
   let catChart = null;
-  let market = null; // India carbon-market info from the API
-  let creditPrice = null; // INR per tonne chosen by the user (null = server default)
-
-  const inr = (n) => '₹' + Math.round(n).toLocaleString('en-IN');
-  const radioValue = (name) => document.querySelector(`input[name="${name}"]:checked`).value;
-
-  const ROUTE_TEXT = {
-    obligated:
-      'Your industry has binding emission-intensity targets under India\'s Carbon Credit Trading Scheme (CCTS). If your plant beats its target it earns tradable credits; if it misses, it must buy them. The steps below are your levers.',
-    obligated_pending:
-      'Your industry is listed under the CCTS, but I could not confirm final targets. Check the latest notification with the Bureau of Energy Efficiency. Cutting energy use helps either way.',
-    voluntary:
-      'Your industry has no CCTS obligation. The dependable gain is lower energy and fuel bills. Credits are an upside that needs a registered, independently verified project.',
-  };
 
   /* ---------------- helpers ---------------- */
 
@@ -89,10 +75,7 @@
     e.preventDefault();
     $('welcomeError').textContent = '';
     try {
-      const user = await api('/api/users', {
-        method: 'POST',
-        body: { name: $('nameInput').value, ...profileBody('useType', 'welcomeSector', 'welcomeTariff') },
-      });
+      const user = await api('/api/users', { method: 'POST', body: { name: $('nameInput').value } });
       userId = user.id;
       localStorage.setItem(STORAGE_KEY, String(user.id));
       await showApp();
@@ -104,7 +87,6 @@
   $('switchUser').addEventListener('click', () => {
     localStorage.removeItem(STORAGE_KEY);
     userId = null;
-    creditPrice = null;
     $('nameInput').value = '';
     showWelcome();
   });
@@ -207,135 +189,7 @@
     }
   });
 
-  /* ---------------- personal / business profile ---------------- */
-
-  function profileBody(typeName, sectorId, tariffId) {
-    const accountType = radioValue(typeName);
-    if (accountType !== 'business') return { accountType };
-    return { accountType, sector: $(sectorId).value, tariff: Number($(tariffId).value) };
-  }
-
-  function setupBusinessControls() {
-    const sectors = market.sectors.map((s) => ({ key: s.key, label: s.label }));
-    for (const id of ['welcomeSector', 'profileSector']) {
-      fillSelect($(id), sectors);
-      $(id).value = 'other';
-    }
-    $('welcomeTariff').value = market.defaultTariff;
-    $('profileTariff').value = market.defaultTariff;
-
-    for (const [name, panel] of [['useType', 'welcomeBiz'], ['profType', 'profileBiz']]) {
-      for (const radio of document.querySelectorAll(`input[name="${name}"]`)) {
-        radio.addEventListener('change', () => {
-          $(panel).hidden = radioValue(name) !== 'business';
-        });
-      }
-    }
-  }
-
-  function fillProfile(user) {
-    const radio = document.querySelector(`input[name="profType"][value="${user.accountType}"]`);
-    if (radio) radio.checked = true;
-    $('profileBiz').hidden = user.accountType !== 'business';
-    if (user.sector) $('profileSector').value = user.sector;
-    $('profileTariff').value = user.tariff;
-  }
-
-  $('profileForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    $('profileMsg').textContent = '';
-    try {
-      await api(`/api/users/${userId}/profile`, {
-        method: 'PUT',
-        body: profileBody('profType', 'profileSector', 'profileTariff'),
-      });
-      $('profileMsg').textContent = 'Saved.';
-      await refresh();
-    } catch (err) {
-      $('profileMsg').textContent = err.message;
-    }
-  });
-
-  $('creditPrice').addEventListener('change', () => {
-    const v = Number($('creditPrice').value);
-    creditPrice = Number.isFinite(v) && v >= 100 && v <= 20000 ? v : null;
-    refresh();
-  });
-
   /* ---------------- rendering ---------------- */
-
-  function renderMarket() {
-    $('marketTitle').textContent = `How ${market.market.headline} works`;
-    $('marketAsOf').textContent = market.market.asOf;
-    const blocks = $('marketBlocks');
-    blocks.replaceChildren();
-    for (const b of market.market.blocks) {
-      const div = el('div', 'market-block');
-      div.appendChild(el('h3', null, b.title));
-      div.appendChild(el('p', null, b.body));
-      blocks.appendChild(div);
-    }
-    const list = $('marketSources');
-    list.replaceChildren();
-    for (const s of market.market.sources) {
-      const li = el('li');
-      const a = el('a', null, s.title);
-      a.href = s.url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      li.appendChild(a);
-      list.appendChild(li);
-    }
-  }
-
-  function renderBusiness(d) {
-    const b = d.business;
-    $('bizSection').hidden = !b;
-    if (!b) return;
-
-    $('bizSector').textContent = b.sector ? `· ${b.sector.label}` : '';
-    $('bizRoute').textContent = ROUTE_TEXT[b.sector.route];
-
-    const has = b.hasData && b.actions.length > 0;
-    $('bizEmissions').textContent = b.hasData ? fmt(b.annualEmissionTonnes, 1) : '–';
-    $('bizCost').textContent = has ? inr(b.totals.costSavingINR) : '–';
-    $('bizCredit').textContent = has ? inr(b.totals.creditValueINR) : '–';
-    $('bizTotal').textContent = has ? inr(b.totals.totalBenefitINR) : '–';
-    $('bizPercent').textContent = has ? `about ${b.percentReducible}% less CO₂e, ${fmt(b.totals.tonnesSaved, 1)} t a year` : '';
-    $('bizEmpty').hidden = has;
-
-    if (document.activeElement !== $('creditPrice')) $('creditPrice').value = b.creditPrice;
-
-    const sc = $('priceScenarios');
-    sc.replaceChildren();
-    for (const s of market.priceScenarios) {
-      const btn = el('button', 'btn small' + (s.inrPerTonne === b.creditPrice ? ' on' : ''), `${s.label}: ${inr(s.inrPerTonne)}`);
-      btn.type = 'button';
-      btn.addEventListener('click', () => {
-        creditPrice = s.inrPerTonne;
-        refresh();
-      });
-      sc.appendChild(btn);
-    }
-
-    const tbody = $('bizTable').querySelector('tbody');
-    tbody.replaceChildren();
-    for (const a of b.actions) {
-      const tr = el('tr');
-      const first = el('td');
-      first.appendChild(el('strong', null, a.title));
-      first.appendChild(el('small', null, a.detail));
-      tr.appendChild(first);
-      tr.appendChild(el('td', 'num', fmt(a.annualTonnesSaved, 2)));
-      tr.appendChild(el('td', 'num', a.annualCostSavingINR ? inr(a.annualCostSavingINR) : '–'));
-      tr.appendChild(el('td', 'num', inr(a.creditValueINR)));
-      tbody.appendChild(tr);
-    }
-
-    $('bizAssume').textContent =
-      `Planning estimates, not guarantees. They assume ₹${b.tariff} per kWh of electricity, ${inr(b.creditPrice)} per tonne of credits, and illustrative fuel, solar and LPG prices. ` +
-      'Solar is calculated after the efficiency savings. Credit value is only real once reductions are registered and verified, and generating credits has its own costs.';
-  }
 
   function renderStats(d) {
     $('userName').textContent = d.user.name;
@@ -473,19 +327,163 @@
   async function refresh() {
     const today = localToday();
     const [dash, board, recent] = await Promise.all([
-      api(`/api/dashboard?userId=${userId}&today=${today}${creditPrice ? `&creditPrice=${creditPrice}` : ''}`),
+      api(`/api/dashboard?userId=${userId}&today=${today}`),
       api(`/api/leaderboard?today=${today}`),
       api(`/api/activities?userId=${userId}&limit=15`),
     ]);
     renderStats(dash);
-    renderBusiness(dash);
-    fillProfile(dash.user);
     renderTrend(dash);
     renderCategories(dash);
     renderTips(dash);
     renderBoard(board);
     renderRecent(recent);
+    await Promise.all([loadCoach(), Promise.resolve(renderChallenges())]);
   }
+
+  /* ---------------- pollution intelligence ---------------- */
+
+  const pollutantLabels = [
+    ['pm2_5', 'PM2.5'], ['pm10', 'PM10'], ['no2', 'NO₂'], ['o3', 'O₃'],
+    ['co', 'CO'], ['so2', 'SO₂'], ['no', 'NO'], ['nh3', 'NH₃'],
+  ];
+
+  $('pollutionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    $('pollutionError').textContent = '';
+    const result = $('pollutionResult');
+    result.hidden = true;
+    try {
+      const data = await api(`/api/pollution?city=${encodeURIComponent($('cityInput').value.trim())}`);
+      result.replaceChildren();
+      const heading = el('div', 'pollution-heading');
+      heading.appendChild(el('h3', null, `${data.location.name}${data.location.state ? ', ' + data.location.state : ''}, ${data.location.country}`));
+      heading.appendChild(el('span', `aqi-badge aqi-${data.aqi}`, `AQI ${data.aqi}: ${data.aqiLabel}`));
+      result.appendChild(heading);
+      const meta = el('p', 'hint', `Provider reading${data.observedAt ? ' · observed ' + new Date(data.observedAt).toLocaleString() : ''}`);
+      result.appendChild(meta);
+      const grid = el('div', 'pollutant-grid');
+      for (const [key, label] of pollutantLabels) {
+        const card = el('div', 'pollutant');
+        card.appendChild(el('span', null, label));
+        card.appendChild(el('strong', null, data.components[key] == null ? '—' : `${Number(data.components[key]).toLocaleString(undefined, { maximumFractionDigits: 1 })} µg/m³`));
+        grid.appendChild(card);
+      }
+      result.appendChild(grid);
+      result.appendChild(el('h3', null, 'Suggested next steps'));
+      const ul = el('ul', 'pollution-suggestions');
+      data.suggestions.forEach((tip) => ul.appendChild(el('li', null, tip)));
+      result.appendChild(ul);
+      result.appendChild(el('p', 'hint', data.note));
+      const mapTitle = el('h3', null, 'Area map');
+      result.appendChild(mapTitle);
+      const map = document.createElement('iframe');
+      const lat = Number(data.location.lat), lon = Number(data.location.lon);
+      const delta = 0.08;
+      map.src = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(`${lon-delta},${lat-delta},${lon+delta},${lat+delta}`)}&layer=mapnik&marker=${encodeURIComponent(`${lat},${lon}`)}`;
+      map.title = `Map of ${data.location.name}`;
+      map.loading = 'lazy';
+      map.referrerPolicy = 'no-referrer-when-downgrade';
+      map.className = 'pollution-map';
+      result.appendChild(map);
+      result.appendChild(el('p', 'hint', `Source: ${data.source}. Air quality is not the same as a personal carbon footprint.`));
+      result.hidden = false;
+    } catch (err) {
+      $('pollutionError').textContent = err.message;
+    }
+  });
+
+  /* ---------------- personalized eco-coach ---------------- */
+
+  async function loadCoach() {
+    if (!userId) return;
+    const list = $('coachIdeas');
+    list.replaceChildren();
+    try {
+      const data = await api(`/api/eco-coach?userId=${userId}`);
+      data.ideas.forEach((idea) => {
+        const li = el('li', 'tip');
+        li.appendChild(el('strong', null, idea.title));
+        li.appendChild(el('p', null, idea.detail));
+        li.appendChild(el('span', 'saving', `Estimated saving: ${idea.estimatedWeeklySavingKg} kg CO₂e/week · ${idea.difficulty}`));
+        li.appendChild(el('p', 'hint', idea.costNote));
+        list.appendChild(li);
+      });
+      if (!data.ideas.length) list.appendChild(el('li', 'empty', 'Log some activities to unlock more tailored ideas.'));
+    } catch (err) {
+      list.appendChild(el('li', 'empty', err.message));
+    }
+  }
+  $('refreshCoach').addEventListener('click', loadCoach);
+
+  /* ---------------- energy and cost simulator ---------------- */
+
+  $('energyForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const kwh = Number($('energyKwh').value);
+    const percent = Number($('energyPercent').value);
+    const rate = Number($('energyRate').value);
+    if (![kwh, percent, rate].every(Number.isFinite) || kwh < 0 || percent <= 0 || percent > 90 || rate < 0) {
+      $('energyResult').textContent = 'Please enter valid non-negative values and a reduction target up to 90%.';
+      return;
+    }
+    const savedKwh = kwh * percent / 100;
+    const savedKg = savedKwh * 0.82;
+    const savedMoney = savedKwh * rate;
+    $('energyResult').textContent = `Estimated monthly saving: ${savedKwh.toFixed(1)} kWh · ₹${savedMoney.toFixed(0)} · ${savedKg.toFixed(1)} kg CO₂e. Annualized: ₹${(savedMoney * 12).toFixed(0)} and ${(savedKg * 12).toFixed(1)} kg CO₂e, if the same reduction continues. Uses an illustrative 0.82 kg CO₂e/kWh factor; replace it with a current local factor for better accuracy.`;
+  });
+
+  /* ---------------- weekly challenges ---------------- */
+
+  const CHALLENGES = [
+    { id: 'bottle', title: 'Carry a reusable bottle for five days', detail: 'Avoid disposable bottles where safe refill options exist.' },
+    { id: 'transit', title: 'Choose a lower-carbon trip twice', detail: 'Walk, cycle, use transit or share a ride when practical.' },
+    { id: 'standby', title: 'Switch off unused devices for a week', detail: 'Avoid wasting electricity when devices are not needed.' },
+    { id: 'waste', title: 'Sort recyclable waste correctly', detail: 'Follow the collection rules in your area.' },
+    { id: 'meal', title: 'Try two lower-impact meals', detail: 'Choose meals you enjoy with a lower estimated footprint.' },
+  ];
+  function challengeKey() { return `ecotrack.challenges.${userId}`; }
+  function renderChallenges() {
+    const container = $('challenges');
+    if (!container || !userId) return;
+    let done = {};
+    try { done = JSON.parse(localStorage.getItem(challengeKey()) || '{}'); } catch { done = {}; }
+    container.replaceChildren();
+    CHALLENGES.forEach((challenge) => {
+      const label = el('label', 'challenge');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox'; checkbox.checked = Boolean(done[challenge.id]);
+      checkbox.addEventListener('change', () => {
+        done[challenge.id] = checkbox.checked;
+        localStorage.setItem(challengeKey(), JSON.stringify(done));
+        updateChallengeSummary(done);
+      });
+      const textWrap = el('span', 'challenge-copy');
+      textWrap.appendChild(el('strong', null, challenge.title));
+      textWrap.appendChild(el('small', null, challenge.detail));
+      label.append(checkbox, textWrap);
+      container.appendChild(label);
+    });
+    updateChallengeSummary(done);
+  }
+  function updateChallengeSummary(done) {
+    const count = CHALLENGES.filter((c) => done[c.id]).length;
+    $('challengeSummary').textContent = `${count} of ${CHALLENGES.length} challenges completed · progress is saved in this browser for this profile.`;
+  }
+
+  /* ---------------- report exports ---------------- */
+
+  $('exportCsv').addEventListener('click', async () => {
+    try {
+      const rows = await api(`/api/activities?userId=${userId}&limit=100`);
+      const escapeCsv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const lines = [['Date', 'Category', 'Activity', 'Quantity', 'Emission kg CO2e'], ...rows.map((a) => [a.date, a.category, itemOf(a.category, a.type)?.label || a.type, a.quantity, a.emission])];
+      const blob = new Blob([lines.map((r) => r.map(escapeCsv).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a'); link.href = url; link.download = 'ecotrack-activity-report.csv'; link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) { alert(err.message); }
+  });
+  $('printReport').addEventListener('click', () => window.print());
 
   /* ---------------- boot ---------------- */
 
@@ -493,10 +491,7 @@
     $('date').value = localToday();
     $('date').max = localToday();
     factors = await api('/api/factors');
-    market = await api('/api/carbon-market');
     setupCategoryControls();
-    setupBusinessControls();
-    renderMarket();
 
     const saved = Number(localStorage.getItem(STORAGE_KEY));
     if (saved) {

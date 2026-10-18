@@ -25,20 +25,7 @@
       <h1>Know your footprint.<br />Shrink it, one day at a time.</h1>
       <p>Log your travel, food, energy and waste. EcoTrack turns it into a score, a forecast and swaps that save the most CO₂.</p>
       <form id="welcomeForm" class="inline-form">
-        <fieldset class="usage">
-          <legend>How will you use EcoTrack?</legend>
-          <label class="choice"><input type="radio" name="useType" value="personal" checked /> Personal</label>
-          <label class="choice"><input type="radio" name="useType" value="business" /> Commercial / business</label>
-        </fieldset>
-        <div id="welcomeBiz" class="biz-fields" hidden>
-          <label>Your industry
-            <select id="welcomeSector"></select>
-          </label>
-          <label>Electricity price (Rs per kWh)
-            <input id="welcomeTariff" type="number" min="1" max="50" step="0.5" value="8" />
-          </label>
-        </div>
-        <input id="nameInput" type="text" placeholder="Your name or business name" minlength="2" maxlength="30" required autocomplete="given-name" />
+        <input id="nameInput" type="text" placeholder="Your name" minlength="2" maxlength="30" required autocomplete="given-name" />
         <button class="btn primary" type="submit">Get started</button>
       </form>
       <p id="welcomeError" class="error" role="alert"></p>
@@ -53,43 +40,15 @@
         <article class="card stat"><span class="stat-label">Green streak</span><span class="stat-value" id="statStreak">–</span><span class="stat-sub">days within goal</span></article>
       </section>
 
-      <section id="bizSection" class="biz" hidden>
-        <div class="card">
-          <h2>Business and carbon credits <small id="bizSector"></small></h2>
-          <p class="route" id="bizRoute"></p>
-          <div class="biz-tiles">
-            <div class="tile"><span class="stat-label">Your yearly emissions</span><span class="tile-value" id="bizEmissions">–</span><span class="stat-sub">tonnes CO₂e (from the last 30 days)</span></div>
-            <div class="tile"><span class="stat-label">Possible yearly savings</span><span class="tile-value" id="bizCost">–</span><span class="stat-sub">on energy, fuel and travel</span></div>
-            <div class="tile"><span class="stat-label">Potential credit value</span><span class="tile-value" id="bizCredit">–</span><span class="stat-sub">only if reductions are verified</span></div>
-            <div class="tile accent"><span class="stat-label">Total potential benefit</span><span class="tile-value" id="bizTotal">–</span><span class="stat-sub" id="bizPercent"></span></div>
-          </div>
-
-          <div class="price-row">
-            <label>Carbon credit price (Rs per tonne)
-              <input id="creditPrice" type="number" min="100" max="20000" step="50" />
-            </label>
-            <div id="priceScenarios" class="scenarios"></div>
-          </div>
-
-          <p class="hint" id="bizEmpty" hidden>Log a few days of your business's electricity, fleet travel, fuel and waste to see a personalised savings plan.</p>
-          <div class="table-wrap">
-            <table id="bizTable" class="biz-table">
-              <thead>
-                <tr><th>What to do</th><th class="num">Saves (t CO₂e/yr)</th><th class="num">Cost saving (Rs/yr)</th><th class="num">Credit value (Rs/yr)</th></tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <p class="hint" id="bizAssume"></p>
-        </div>
-
-        <div class="card">
-          <h2 id="marketTitle">How India's carbon market works</h2>
-          <p class="hint" id="marketAsOf"></p>
-          <div id="marketBlocks" class="market-grid"></div>
-          <h3 class="sources-title">Sources</h3>
-          <ul id="marketSources" class="sources"></ul>
-        </div>
+      <section class="card environmental-card">
+        <div class="section-heading"><div><p class="eyebrow">LIVE ENVIRONMENT</p><h2>Pollution intelligence</h2></div><span class="pill">OpenWeather</span></div>
+        <p class="hint">Search a city or area to view the latest available air-pollution reading. This is separate from your personal carbon footprint.</p>
+        <form id="pollutionForm" class="inline-form pollution-form">
+          <input id="cityInput" type="text" placeholder="e.g. Ghaziabad, IN" minlength="2" maxlength="100" required aria-label="City or area" />
+          <button class="btn primary" type="submit">Check air quality</button>
+        </form>
+        <p id="pollutionError" class="error" role="alert"></p>
+        <div id="pollutionResult" class="pollution-result" hidden aria-live="polite"></div>
       </section>
 
       <div class="grid">
@@ -132,6 +91,31 @@
         </section>
 
         <section class="card">
+          <div class="section-heading"><h2>AI-style Eco-Coach</h2><button id="refreshCoach" class="btn small" type="button">Refresh ideas</button></div>
+          <p class="hint">Personalized, rule-based suggestions from your logged activity. Estimates are not official carbon accounting.</p>
+          <ul id="coachIdeas" class="tips"></ul>
+        </section>
+
+        <section class="card">
+          <h2>Energy & cost simulator</h2>
+          <p class="hint">Estimate the impact of reducing your electricity use. Change the values to compare a scenario.</p>
+          <form id="energyForm" class="form">
+            <label>Monthly electricity use (kWh)<input id="energyKwh" type="number" min="0" max="100000" step="any" value="200" required /></label>
+            <label>Reduction target (%)<input id="energyPercent" type="number" min="1" max="90" value="10" required /></label>
+            <label>Electricity price (₹/kWh)<input id="energyRate" type="number" min="0" max="1000" step="any" value="8" required /></label>
+            <button class="btn" type="submit">Calculate impact</button>
+          </form>
+          <div id="energyResult" class="sim-result" aria-live="polite">Enter your values to estimate savings.</div>
+        </section>
+
+        <section class="card">
+          <div class="section-heading"><h2>Weekly eco-challenges</h2><span class="pill">Community</span></div>
+          <p class="hint">Complete small, practical actions. Progress is saved in this browser for this profile.</p>
+          <div id="challenges" class="challenges"></div>
+          <p id="challengeSummary" class="hint"></p>
+        </section>
+
+        <section class="card">
           <h2>What if…?</h2>
           <form id="simForm" class="form">
             <label>Category
@@ -164,29 +148,8 @@
           </form>
         </section>
 
-        <section class="card">
-          <h2>Your profile</h2>
-          <form id="profileForm" class="form">
-            <fieldset class="usage left">
-              <legend>Using EcoTrack for</legend>
-              <label class="choice"><input type="radio" name="profType" value="personal" /> Personal</label>
-              <label class="choice"><input type="radio" name="profType" value="business" /> Commercial / business</label>
-            </fieldset>
-            <div id="profileBiz" class="biz-fields stack" hidden>
-              <label>Your industry
-                <select id="profileSector"></select>
-              </label>
-              <label>Electricity price (Rs per kWh)
-                <input id="profileTariff" type="number" min="1" max="50" step="0.5" value="8" />
-              </label>
-            </div>
-            <button class="btn" type="submit">Save profile</button>
-            <p id="profileMsg" class="hint" aria-live="polite"></p>
-          </form>
-        </section>
-
         <section class="card wide">
-          <h2>Recent activity</h2>
+          <div class="section-heading"><h2>Recent activity</h2><div class="action-row"><button id="exportCsv" class="btn small" type="button">Export CSV</button><button id="printReport" class="btn small" type="button">Print / PDF report</button></div></div>
           <ul id="recent" class="recent"></ul>
         </section>
       </div>

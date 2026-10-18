@@ -8,24 +8,14 @@ A personal **carbon footprint tracker** for the sustainability track of a hackat
 - **Dashboard**: today's total, 7-day average, eco score, green streak
 - **Charts**: 14-day trend with a 7-day forecast, category breakdown
 - **Smart tips**: ranked by the kg CO₂e *your own* habits would save per week
-- **What-if simulator**: "what if I replaced 100 km of car with bus?"
+- **What-if simulator**: compare travel/food/waste alternatives and estimated CO₂e savings
+- **Live pollution intelligence**: search a city, view OpenWeather AQI (1–5), supported pollutant readings, timestamp, map and practical suggestions
+- **Personalized Eco-Coach**: activity-aware, rule-based ideas with transparent estimated weekly savings
+- **Energy & cost simulator**: estimate kWh, rupee and CO₂e savings for a chosen electricity reduction
+- **Weekly challenges**: five practical challenges with browser-saved progress per profile
+- **Impact exports**: download recent activity as CSV or print/save a report as PDF
 - **Leaderboard** and an adjustable daily goal
 - Light and dark mode, keyboard accessible, mobile friendly
-- **Business mode**: choose "Commercial / business" and pick your industry to get a plan that shows how much you could save a year, how India's Carbon Credit Trading Scheme (CCTS) applies to you, and what carbon credits might be worth (see below)
-
-## Business mode and India's carbon market
-
-When a user says they are using EcoTrack commercially, the dashboard adds a **Business and carbon credits** section:
-
-- Your **yearly emissions** (projected from the last 30 days of logs)
-- A **savings plan**: energy audit, rooftop solar, EV fleet shift, fewer flights, LPG and waste actions, each with tonnes CO₂e saved, rupees saved per year and potential credit value
-- An editable **credit price** with two scenarios (early market about ₹900/t, and a 2030 consultancy projection of about ₹3,900/t)
-- A plain-language **explainer of the CCTS**: who must take part, how credits are earned, the voluntary route for everyone else, and why cutting emissions can raise income
-- Your industry decides the message: obligated (binding targets), pending, or voluntary
-
-Where the money really comes from: lower energy and fuel bills (immediate and dependable). Credits are an upside that exist only for verified, registered reductions, so they are shown separately. All rupee figures are illustrative planning assumptions, defined at the top of `src/business.js`, and should be replaced with your own bills and quotes. India's carbon market rules are still evolving; confirm current details with the [Bureau of Energy Efficiency](https://beeindia.gov.in).
-
-Sources used for the market information: [ICAP on the CCTS](https://icapcarbonaction.com/en/ets/indian-carbon-credit-trading-scheme), [ICAP on the notified sector targets](https://icapcarbonaction.com/en/news/india-notifies-emission-intensity-targets-nine-sectors-under-carbon-credit-trading-scheme) and [Quantum Commodity Intelligence on price projections](https://www.qcintel.com/carbon/article/india-s-ccts-prices-could-rise-to-44-t-by-2030-consultancy-57346.html).
 
 ## Tech stack
 
@@ -47,9 +37,7 @@ npm start        # http://localhost:3000
 npm test
 ```
 
-Environment variables: `PORT` (default `3000`), `DB_FILE` (default `data/ecotrack.db`), `AUTO_SEED` (default on; set to `false` to stop demo users being created when the database is empty).
-
-**Free hosting note:** hosts like Render's free tier can wipe the SQLite file on every restart or redeploy. EcoTrack therefore re-creates 8 demo users (5 personal, 3 business) whenever it starts with an empty database. For data that truly persists, attach a persistent disk or move to a hosted database.
+Environment variables: `PORT` (default `3000`), `DB_FILE` (default `data/ecotrack.db`), and `OPENWEATHER_API_KEY` (required for live pollution search). Copy `.env.example` to `.env` and add your key. EcoTrack reads the key only on the server; never put it in frontend JavaScript or commit `.env`.
 
 ## Project structure
 
@@ -60,7 +48,6 @@ src/
   db.js                SQLite schema
   emissions.js         emission factors + CO2e calculation
   algorithms.js        scoring, streak, forecast, tips, simulator
-  business.js          India carbon-market info, sectors, business savings plan
 public/                frontend (index.html, styles.css, app.js)
 scripts/seed.js        demo data
 tests/                 algorithm and API tests
@@ -82,15 +69,15 @@ All live in `src/algorithms.js` and are unit-tested.
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/factors` | Categories, activity types, factors |
-| GET | `/api/carbon-market` | India CCTS explainer, sectors, price scenarios |
+| GET | `/api/pollution?city=Ghaziabad%2C%20IN` | Geocode a location and return current OpenWeather Air Pollution data (requires `OPENWEATHER_API_KEY`) |
+| GET | `/api/eco-coach?userId=` | Activity-aware sustainability ideas and estimated savings |
 | POST | `/api/users` | Create user `{ name }` |
 | GET | `/api/users/:id` | Get user |
 | PUT | `/api/users/:id/goal` | Set daily goal `{ dailyGoal }` |
-| PUT | `/api/users/:id/profile` | Personal or business `{ accountType, sector, tariff }` |
 | POST | `/api/activities` | Log `{ userId, category, type, quantity, date }` |
 | GET | `/api/activities?userId=&limit=` | Recent activities |
 | DELETE | `/api/activities/:id?userId=` | Delete an activity |
-| GET | `/api/dashboard?userId=&today=&creditPrice=` | Stats, charts data, forecast, tips, and `business` plan for business accounts |
+| GET | `/api/dashboard?userId=&today=` | Stats, charts data, forecast, tips |
 | POST | `/api/simulate` | `{ category, fromType, toType, quantity }` |
 | GET | `/api/leaderboard` | Top 10 by eco score |
 
@@ -99,13 +86,14 @@ All live in `src/algorithms.js` and are unit-tested.
 - Emission factors are rounded public averages (DEFRA, IPCC and Our World in Data style figures; India grid factor for electricity). They are for awareness, not official carbon accounting. Localise them in `src/emissions.js`.
 - Users are name-only profiles stored in the browser, with no passwords. Add real authentication before any public deployment.
 
-## Ideas for next steps
+## Important limitations and next steps
 
-- Real authentication and per-user privacy
-- Receipt or bill scanning for energy and food
-- Team challenges and badges
-- Region-specific factors from a public dataset
-- Deploy to Render, Railway or Fly.io
+- User profiles are name-only, not authenticated accounts. Do not use sensitive personal data; add proper authentication and authorization before a public production launch.
+- Weekly challenge completion is stored in the current browser, not synced across devices or verified.
+- Pollution results are provider readings and may not represent street-level conditions. The provider AQI is 1–5 and is not a personal carbon score.
+- Energy savings use an illustrative 0.82 kg CO₂e/kWh factor and user-entered electricity price; localize both for better estimates.
+- Emission factors are rounded public averages for awareness, not official carbon accounting.
+- Add real authentication, server-side challenge persistence, region-specific emission factors, and broader integration tests before a public production launch.
 
 ## Credits
 
@@ -114,3 +102,20 @@ All application code in this repository was written from scratch for this projec
 ## License
 
 MIT
+
+## OpenWeather setup
+
+1. Create an API key in your OpenWeather account with access to Geocoding API and Air Pollution API.
+2. Copy `.env.example` to `.env` in the project root.
+3. Set `OPENWEATHER_API_KEY=your_real_key` in `.env` (do not include quotes unless needed).
+4. Run `npm install`, then `npm start`, and search for a city in Pollution intelligence.
+5. For Render, add `OPENWEATHER_API_KEY` under the service's Environment settings; do not upload the `.env` file.
+
+The app deliberately returns a setup message if the key is absent. Never expose the API key in `public/app.js` or client-side HTML.
+
+## Added feature behavior
+
+- The Eco-Coach is deterministic and explainable, rather than a generative AI service; it ranks rule-based ideas using logged activity quantities.
+- The what-if and energy tools produce estimates, not verified offsets. The energy simulator uses an illustrative grid factor of 0.82 kg CO₂e/kWh.
+- Challenge completion is stored in browser local storage. It is not shared between devices and is not proof of verified action.
+- CSV exports up to the 100 most recent activity records. Print / PDF opens the browser print dialog; choose “Save as PDF” there.
