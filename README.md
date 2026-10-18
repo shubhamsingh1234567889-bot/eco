@@ -2,6 +2,16 @@
 
 A personal **carbon footprint tracker** for the sustainability track of a hackathon. Log your travel, food, home energy and waste, and EcoTrack turns it into an eco score, a trend forecast and personalised swaps that save the most CO₂.
 
+## Additional hackathon features
+
+- **Individual and business profile option:** choose a personal or business/entrepreneur workspace during onboarding.
+- **Visual dashboard:** local SVG illustrations and Chart.js graphs for activity trends, category breakdown and solar bill scenarios.
+- **Solar savings planner:** estimates a simple bill offset, installed-cost scenario, payback period and potential grid-emissions avoidance from user-provided assumptions. Results are illustrative and exclude financing, maintenance, subsidies, export compensation and site-specific generation.
+- **Carbon-credit education:** explains the difference between direct reductions and offsets, and encourages verification, registry checks, retirement checks and avoiding double counting. EcoTrack does not issue or certify credits.
+- **Personalized report action plan:** recommends next steps based on logged categories, provides solar and efficiency ideas, and adds business-focused guidance for business profiles. Included in browser print / PDF reports.
+
+Solar planning uses simplified assumptions (including 1,400 kWh per installed kW per year and 0.82 kg CO₂e/kWh for illustrative avoided-emissions estimates). Replace these with local, current, site-specific data before making decisions or claims.
+
 ## Features
 
 - **Activity logging** across transport, food, energy and waste, with a live CO₂e preview

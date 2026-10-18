@@ -23,9 +23,12 @@
     <!-- Onboarding -->
     <section id="welcome" class="card welcome" hidden>
       <h1>Know your footprint.<br />Shrink it, one day at a time.</h1>
-      <p>Log your travel, food, energy and waste. EcoTrack turns it into a score, a forecast and swaps that save the most CO₂.</p>
-      <form id="welcomeForm" class="inline-form">
+      <p>Log your travel, food, energy and waste. EcoTrack turns it into a score, a forecast and practical swaps that can save CO₂ and money.</p>
+      <div class="welcome-art"><img src="assets/eco-city.svg" alt="Illustration of a greener city with trees and clean energy" /></div>
+      <form id="welcomeForm" class="inline-form welcome-form">
         <input id="nameInput" type="text" placeholder="Your name" minlength="2" maxlength="30" required autocomplete="given-name" />
+        <select id="profileType" aria-label="Choose your profile"><option value="individual">Individual</option><option value="business">Business / Entrepreneur</option></select>
+        <input id="businessName" type="text" placeholder="Business or organization name" maxlength="80" hidden />
         <button class="btn primary" type="submit">Get started</button>
       </form>
       <p id="welcomeError" class="error" role="alert"></p>
@@ -33,6 +36,11 @@
 
     <!-- App -->
     <div id="app" hidden>
+      <section id="profileBanner" class="card profile-banner" hidden>
+        <div><p class="eyebrow">BUSINESS WORKSPACE</p><h2 id="profileHeading">Business sustainability planner</h2><p class="hint">Estimate operational emissions, explore energy alternatives and prepare a practical action plan. Estimates are for planning, not audited reporting.</p></div>
+        <img src="assets/solar-office.svg" alt="Office building powered by rooftop solar panels" />
+      </section>
+
       <section class="stats">
         <article class="card stat"><span class="stat-label">Today</span><span class="stat-value" id="statToday">–</span><span class="stat-sub">kg CO₂e</span></article>
         <article class="card stat"><span class="stat-label">7-day average</span><span class="stat-value" id="statAvg">–</span><span class="stat-sub" id="statGoal">kg CO₂e / day</span></article>
@@ -106,6 +114,39 @@
             <button class="btn" type="submit">Calculate impact</button>
           </form>
           <div id="energyResult" class="sim-result" aria-live="polite">Enter your values to estimate savings.</div>
+        </section>
+
+        <section class="card solar-card">
+          <div class="section-heading"><h2>Solar energy savings planner</h2><span class="pill">Illustrative estimate</span></div>
+          <img class="feature-image" src="assets/solar-panels.svg" alt="Solar panels collecting sunlight" loading="lazy" />
+          <p class="hint">Explore how rooftop solar might affect your electricity bill. Enter your bill and an assumed system size; use local installer quotes and your tariff for an investment decision.</p>
+          <form id="solarForm" class="form">
+            <label>Monthly electricity bill (₹)<input id="solarBill" type="number" min="0" max="10000000" value="4000" required /></label>
+            <label>Solar system size (kW)<input id="solarKw" type="number" min="0.5" max="10000" step="0.5" value="3" required /></label>
+            <label>Installed cost (₹/kW)<input id="solarCost" type="number" min="1" max="1000000" value="55000" required /></label>
+            <label>Monthly bill offset (%)<input id="solarOffset" type="number" min="1" max="100" value="70" required /></label>
+            <button class="btn primary" type="submit">Estimate solar payback</button>
+          </form>
+          <div id="solarResult" class="sim-result" aria-live="polite">Enter your assumptions to estimate savings.</div>
+          <div class="chart-box small"><canvas id="solarChart" aria-label="Estimated annual electricity bill before and after solar" role="img"></canvas></div>
+        </section>
+
+        <section class="card carbon-credit-card">
+          <div class="section-heading"><h2>Carbon credits, explained</h2><span class="pill">Learn before you buy</span></div>
+          <img class="feature-image credit-image" src="assets/carbon-credits.svg" alt="Illustration representing verified carbon reduction and carbon credits" loading="lazy" />
+          <p>A <strong>carbon credit</strong> generally represents one metric tonne of CO₂ equivalent reduced or removed under a defined program. Credits are not the same as reducing your own emissions, and quality varies.</p>
+          <div class="credit-steps">
+            <article><span>01</span><strong>Measure first</strong><p>Estimate your footprint and reduce avoidable emissions before considering credits.</p></article>
+            <article><span>02</span><strong>Check the standard</strong><p>Look for independent verification, clear project details, additionality, permanence and safeguards.</p></article>
+            <article><span>03</span><strong>Check the registry</strong><p>Confirm serial numbers, ownership and retirement status. Avoid double counting and guaranteed-return claims.</p></article>
+          </div>
+          <p class="hint">EcoTrack does not issue credits or certify projects. A personal footprint estimate alone is not enough to calculate credits eligible for sale. Businesses should consult a qualified carbon-accounting professional for formal claims.</p>
+        </section>
+
+        <section class="card wide report-recommendations">
+          <div class="section-heading"><h2>Recommended next steps for your report</h2><span class="pill">Personalized action plan</span></div>
+          <p class="hint">These suggestions update from the activities you've logged and your energy assumptions. Print / PDF report includes this action plan.</p>
+          <ul id="reportActions" class="tips"></ul>
         </section>
 
         <section class="card">

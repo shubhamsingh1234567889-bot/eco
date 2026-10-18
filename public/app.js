@@ -9,6 +9,11 @@
   let userId = null;
   let trendChart = null;
   let catChart = null;
+  let solarChart = null;
+  let profileMode = localStorage.getItem('ecotrack.profileType') || 'individual';
+  let businessName = localStorage.getItem('ecotrack.businessName') || '';
+  let latestDashboard = null;
+  let latestSolarEstimate = null;
 
   /* ---------------- helpers ---------------- */
 
@@ -55,6 +60,14 @@
 
   const itemOf = (cat, key) => factors[cat].items.find((i) => i.key === key);
 
+  function applyProfileMode() {
+    const isBusiness = profileMode === 'business';
+    document.body.classList.toggle('business-mode', isBusiness);
+    $('profileBanner').hidden = !isBusiness;
+    $('profileHeading').textContent = businessName ? `${businessName} · sustainability planner` : 'Business sustainability planner';
+    $('userName').textContent = '';
+  }
+
   /* ---------------- onboarding ---------------- */
 
   function showWelcome() {
@@ -62,14 +75,26 @@
     $('app').hidden = true;
     $('switchUser').hidden = true;
     $('userName').textContent = '';
+    $('profileType').value = profileMode;
+    $('businessName').value = businessName;
+    $('businessName').hidden = profileMode !== 'business';
   }
 
   async function showApp() {
     $('welcome').hidden = true;
     $('app').hidden = false;
     $('switchUser').hidden = false;
+    applyProfileMode();
     await refresh();
   }
+
+  $('profileType').value = profileMode;
+  $('businessName').value = businessName;
+  $('businessName').hidden = profileMode !== 'business';
+  $('profileType').addEventListener('change', () => {
+    $('businessName').hidden = $('profileType').value !== 'business';
+    if ($('profileType').value === 'business') $('businessName').focus();
+  });
 
   $('welcomeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -77,6 +102,10 @@
     try {
       const user = await api('/api/users', { method: 'POST', body: { name: $('nameInput').value } });
       userId = user.id;
+      profileMode = $('profileType').value;
+      businessName = $('businessName').value.trim();
+      localStorage.setItem('ecotrack.profileType', profileMode);
+      localStorage.setItem('ecotrack.businessName', businessName);
       localStorage.setItem(STORAGE_KEY, String(user.id));
       await showApp();
     } catch (err) {
@@ -192,7 +221,7 @@
   /* ---------------- rendering ---------------- */
 
   function renderStats(d) {
-    $('userName').textContent = d.user.name;
+    $('userName').textContent = profileMode === 'business' ? `${d.user.name} · Business` : d.user.name;
     $('statToday').textContent = fmt(d.todayTotal);
     $('statAvg').textContent = fmt(d.avgDaily7);
     $('statGoal').textContent = `kg CO₂e / day (goal ${d.user.dailyGoal})`;
@@ -324,6 +353,39 @@
     }
   }
 
+  function renderReportActions(d) {
+    const list = $('reportActions');
+    list.replaceChildren();
+    const actions = [];
+    const categories = d.categories || {};
+    const largest = Object.entries(categories).sort((a, b) => b[1] - a[1]).filter(([, v]) => v > 0)[0];
+    if (largest) {
+      const names = { transport: 'travel', food: 'food choices', energy: 'electricity use', waste: 'waste' };
+      const suggestions = {
+        transport: 'Combine errands, carpool, or compare public transport for practical trips. Recalculate the same distance in the What-if simulator before choosing an alternative.',
+        food: 'Plan meals to avoid food waste and try a few lower-impact meals that fit your preferences. Track changes consistently rather than relying on one-day estimates.',
+        energy: 'Start with no-cost efficiency actions: switch off unused devices, use efficient lighting, and check appliance settings. Then compare energy-saving scenarios.',
+        waste: 'Separate recyclable materials according to local collection rules, reuse items where possible, and prevent waste before focusing on disposal.'
+      };
+      actions.push({ title: `Start with ${names[largest[0]]}`, detail: suggestions[largest[0]], saving: `Largest logged category: ${Number(largest[1]).toFixed(1)} kg CO₂e in the recent dashboard period.` });
+    } else {
+      actions.push({ title: 'Log a representative week', detail: 'Add travel, food, electricity and waste activities. A more complete activity log makes the recommendations more useful.', saving: 'Baseline first; then compare changes.' });
+    }
+    actions.push({ title: 'Reduce electricity demand before investing', detail: 'Review monthly kWh, improve efficiency, and use the energy simulator. Savings depend on your tariff, usage and local electricity emissions factor.', saving: 'Low-cost efficiency measures can be evaluated before buying equipment.' });
+    actions.push({ title: 'Explore rooftop solar with real quotes', detail: 'Use the solar planner as a first-pass scenario, then compare installer quotations, roof suitability, shading, net-metering rules, maintenance and available subsidies with official sources.', saving: latestSolarEstimate ? `Your current scenario estimates about ₹${Math.round(latestSolarEstimate.annualSavings).toLocaleString('en-IN')}/year in bill savings before maintenance and financing.` : 'Run the solar savings planner to estimate a scenario.' });
+    if (profileMode === 'business') {
+      actions.push({ title: 'Create a business emissions action plan', detail: 'Gather utility bills, fuel and travel records, and supplier information. Assign owners and targets; use a qualified professional for formal GHG inventory or regulatory reporting.', saving: 'Do not present EcoTrack estimates as audited emissions data.' });
+    }
+    actions.push({ title: 'Learn about offsets only after reducing emissions', detail: 'Carbon credits may support climate projects but do not replace direct reductions. If considering credits, check independent verification, registry records, project quality, retirement status and double-counting safeguards.', saving: 'One credit commonly represents 1 tonne CO₂e under a specific program; eligibility and quality vary.' });
+    actions.forEach((action) => {
+      const li = el('li', 'tip');
+      li.appendChild(el('strong', null, action.title));
+      li.appendChild(el('p', null, action.detail));
+      li.appendChild(el('span', 'saving', action.saving));
+      list.appendChild(li);
+    });
+  }
+
   async function refresh() {
     const today = localToday();
     const [dash, board, recent] = await Promise.all([
@@ -331,12 +393,14 @@
       api(`/api/leaderboard?today=${today}`),
       api(`/api/activities?userId=${userId}&limit=15`),
     ]);
+    latestDashboard = dash;
     renderStats(dash);
     renderTrend(dash);
     renderCategories(dash);
     renderTips(dash);
     renderBoard(board);
     renderRecent(recent);
+    renderReportActions(dash);
     await Promise.all([loadCoach(), Promise.resolve(renderChallenges())]);
   }
 
@@ -432,6 +496,36 @@
     $('energyResult').textContent = `Estimated monthly saving: ${savedKwh.toFixed(1)} kWh · ₹${savedMoney.toFixed(0)} · ${savedKg.toFixed(1)} kg CO₂e. Annualized: ₹${(savedMoney * 12).toFixed(0)} and ${(savedKg * 12).toFixed(1)} kg CO₂e, if the same reduction continues. Uses an illustrative 0.82 kg CO₂e/kWh factor; replace it with a current local factor for better accuracy.`;
   });
 
+  /* ---------------- solar savings planner ---------------- */
+
+  $('solarForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const bill = Number($('solarBill').value);
+    const kw = Number($('solarKw').value);
+    const costPerKw = Number($('solarCost').value);
+    const offset = Number($('solarOffset').value);
+    if (![bill, kw, costPerKw, offset].every(Number.isFinite) || bill < 0 || kw <= 0 || costPerKw <= 0 || offset <= 0 || offset > 100) {
+      $('solarResult').textContent = 'Please enter valid values. Bill must be non-negative, system size and installed cost must be positive, and offset must be 1–100%.';
+      return;
+    }
+    const monthlySavings = bill * offset / 100;
+    const annualSavings = monthlySavings * 12;
+    const systemCost = kw * costPerKw;
+    const paybackYears = annualSavings > 0 ? systemCost / annualSavings : null;
+    // Approximate only: assumes 1,400 kWh/kW/year generation and grid factor 0.82 kg CO2e/kWh.
+    const annualGeneration = kw * 1400;
+    const annualAvoidedKg = annualGeneration * 0.82;
+    latestSolarEstimate = { monthlySavings, annualSavings, systemCost, paybackYears, annualAvoidedKg, kw, offset };
+    $('solarResult').textContent = `Illustrative scenario: estimated bill savings ₹${Math.round(monthlySavings).toLocaleString('en-IN')}/month (₹${Math.round(annualSavings).toLocaleString('en-IN')}/year); assumed installed cost ₹${Math.round(systemCost).toLocaleString('en-IN')}; simple payback about ${paybackYears == null ? 'not available' : paybackYears.toFixed(1) + ' years'}; potential avoided grid emissions ≈ ${(annualAvoidedKg / 1000).toFixed(2)} tonnes CO₂e/year. These estimates can differ substantially from real output and savings; they exclude subsidies, financing, maintenance, degradation, export compensation, roof shading and local tariffs.`;
+    if (solarChart) solarChart.destroy();
+    solarChart = new Chart($('solarChart'), {
+      type: 'bar',
+      data: { labels: ['Before solar', 'After estimated offset'], datasets: [{ label: 'Monthly bill (₹)', data: [bill, bill - monthlySavings], backgroundColor: ['#9db9a6', '#278557'], borderRadius: 8 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `₹${Number(ctx.raw).toLocaleString('en-IN')}` } } }, scales: { x: { ticks: { color: cssVar('--muted') }, grid: { display: false } }, y: { beginAtZero: true, ticks: { color: cssVar('--muted'), callback: (v) => `₹${v}` }, grid: { color: cssVar('--line') } } } }
+    });
+    if (latestDashboard) renderReportActions(latestDashboard);
+  });
+
   /* ---------------- weekly challenges ---------------- */
 
   const CHALLENGES = [
@@ -498,6 +592,8 @@
       try {
         await api(`/api/users/${saved}`);
         userId = saved;
+        profileMode = localStorage.getItem('ecotrack.profileType') || 'individual';
+        businessName = localStorage.getItem('ecotrack.businessName') || '';
         await showApp();
         return;
       } catch {
