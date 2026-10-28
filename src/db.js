@@ -2,15 +2,32 @@
 
 const path = require('path');
 const fs = require('fs');
-const Database = require('better-sqlite3');
+const os = require('os');
+// Built into Node 22.5+, so there is no native module to compile on the host.
+const { DatabaseSync } = require('node:sqlite');
+
+// Use the preferred folder if it is writable, otherwise fall back to the OS temp dir
+// (some hosts, e.g. serverless platforms, mount the app directory read-only).
+function resolveDbFile(file) {
+  if (file) return file;
+  const preferred = process.env.DB_FILE || path.join(__dirname, '..', 'data', 'ecotrack.db');
+  try {
+    fs.mkdirSync(path.dirname(preferred), { recursive: true });
+    fs.accessSync(path.dirname(preferred), fs.constants.W_OK);
+    return preferred;
+  } catch {
+    const fallback = path.join(os.tmpdir(), 'ecotrack.db');
+    console.warn(`Cannot write to ${preferred}; using ${fallback} (data may not survive restarts).`);
+    return fallback;
+  }
+}
 
 function openDb(file) {
-  const dbFile = file || process.env.DB_FILE || path.join(__dirname, '..', 'data', 'ecotrack.db');
-  if (dbFile !== ':memory:') fs.mkdirSync(path.dirname(dbFile), { recursive: true });
+  const dbFile = resolveDbFile(file);
 
-  const db = new Database(dbFile);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  const db = new DatabaseSync(dbFile);
+  if (dbFile !== ':memory:') db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (

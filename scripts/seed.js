@@ -26,7 +26,9 @@ const insertAct = db.prepare(
 
 const jitter = (v) => Math.max(0, Math.round(v * (0.7 + Math.random() * 0.6) * 10) / 10);
 
-const run = db.transaction(() => {
+const run = () => {
+  db.exec('BEGIN');
+  try {
   for (const p of personas) {
     const userId = insertUser.run(p.name).lastInsertRowid;
     for (let i = 20; i >= 0; i--) {
@@ -45,7 +47,12 @@ const run = db.transaction(() => {
       }
     }
   }
-});
+  db.exec('COMMIT');
+  } catch (err) {
+    db.exec('ROLLBACK');
+    throw err;
+  }
+};
 
 run();
 console.log(`Seeded ${personas.length} demo users with 21 days of activity.`);

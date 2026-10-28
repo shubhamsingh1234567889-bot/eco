@@ -32,12 +32,12 @@ Solar planning uses simplified assumptions (including 1,400 kWh per installed kW
 
 | Layer    | Choice |
 |----------|--------|
-| Backend  | Node.js (20+), Express |
-| Database | SQLite via `better-sqlite3` |
+| Backend  | Node.js (22.13+), Express |
+| Database | SQLite via Node's built-in `node:sqlite` (Node 22.13+, no native modules) |
 | Frontend | Vanilla HTML/CSS/JS, Chart.js (CDN) |
 | Tests    | Node's built-in test runner |
 
-No build step. One `npm install` and it runs.
+No build step (`npm run build` is a harmless no-op so CI/CD pipelines that expect it pass). One `npm install` and it runs.
 
 ## Quick start
 
@@ -132,3 +132,26 @@ The app deliberately returns a setup message if the key is absent. Never expose 
 - The what-if and energy tools produce estimates, not verified offsets. The energy simulator uses an illustrative grid factor of 0.82 kg CO₂e/kWh.
 - Challenge completion is stored in browser local storage. It is not shared between devices and is not proof of verified action.
 - CSV exports up to the 100 most recent activity records. Print / PDF opens the browser print dialog; choose “Save as PDF” there.
+
+## Deploying
+
+### GitHub
+
+```bash
+git add -A
+git commit -m "Prepare for deployment"
+git push origin main
+```
+
+`.env` and `data/` are git-ignored, so secrets and local databases are never pushed. GitHub Actions (`.github/workflows/ci.yml`) runs install, build and tests on every push.
+
+### Zoho Catalyst (AppSail)
+
+1. Install the CLI: `npm i -g zcatalyst-cli`, then `catalyst login`.
+2. In this folder run `catalyst init`, choose **AppSail**, a **Catalyst-managed runtime**, **Node.js 22**, and use this folder as the build path. Keep the provided `app-config.json` (startup command `node server.js`).
+3. In the Catalyst console, add `OPENWEATHER_API_KEY` under the AppSail service's environment variables. Do not put it in `app-config.json`.
+4. Run `npm install --omit=dev`, then `catalyst deploy`.
+
+The server listens on `X_ZOHO_CATALYST_LISTEN_PORT`, which Catalyst sets for you.
+
+**Data persistence:** SQLite lives on the AppSail instance's local disk, which should be treated as temporary: data can be lost on redeploy or restart. That is fine for a demo (run `npm run seed` or just re-create users). For real use, move storage to Catalyst Data Store or an external database.
